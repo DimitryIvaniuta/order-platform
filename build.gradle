@@ -1,0 +1,52 @@
+// build.gradle (root of order-platform)
+plugins {
+    // Spring Boot plugin on the classpath, versioned once
+    id 'org.springframework.boot' version '3.5.3' apply false
+    // Dependency‑Management plugin for BOM imports
+    id 'io.spring.dependency-management' version '1.1.0'
+}
+
+allprojects {
+    group = 'com.example'
+    version = '0.1.0'
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    // Core plugins
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+
+    // Java 21 toolchain
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    // Import BOMs for Spring Boot and R2DBC
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:3.5.3"
+            mavenBom "io.r2dbc:r2dbc-bom:Arabba-SR2"
+        }
+        dependencies {
+            // Override the BOM’s commons-lang3 entry:
+            dependency 'org.apache.commons:commons-lang3:3.18.0'
+        }
+    }
+
+    // Shared dependencies (no versions needed for anything in the BOM)
+    dependencies {
+        compileOnly 'org.projectlombok:lombok:1.18.28'
+        annotationProcessor 'org.projectlombok:lombok:1.18.28'
+        testCompileOnly 'org.projectlombok:lombok:1.18.28'
+        testAnnotationProcessor 'org.projectlombok:lombok:1.18.28'
+
+        // From Spring Boot BOM: resolves to 3.5.3
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    }
+
+}
