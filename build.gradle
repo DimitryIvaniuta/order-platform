@@ -40,10 +40,14 @@ subprojects {
 
     // Shared dependencies (no versions needed for anything in the BOM)
     dependencies {
-        compileOnly 'org.projectlombok:lombok:1.18.28'
-        annotationProcessor 'org.projectlombok:lombok:1.18.28'
-        testCompileOnly 'org.projectlombok:lombok:1.18.28'
-        testAnnotationProcessor 'org.projectlombok:lombok:1.18.28'
+        compileOnly 'org.projectlombok:lombok:1.18.38'
+        annotationProcessor 'org.projectlombok:lombok:1.18.38'
+
+        // spring-dotenv for reading .env files
+        implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+
+        testCompileOnly 'org.projectlombok:lombok:1.18.38'
+        testAnnotationProcessor 'org.projectlombok:lombok:1.18.38'
 
         // From Spring Boot BOM: resolves to 3.5.3
         testImplementation 'org.springframework.boot:spring-boot-starter-test'

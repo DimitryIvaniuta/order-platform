@@ -1,0 +1,213 @@
+# docker-compose.yml
+
+services:
+  #################################
+  # Kafka KRaft (single-node)
+  #################################
+  kafka:
+    image: confluentinc/cp-kafka:8.0.0.amd64
+    container_name: kafka
+    ports:
+      - "9092:9092"   # client connections
+      - "9093:9093"   # controller listener
+    environment:
+      # KRaft configuration
+      CLUSTER_ID: "4Z44Abl0Q6aACLW8RKfImg"        # replace with `kafka-storage random-uuid`
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: "1"
+
+      # Controller quorum
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # Listeners & security
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      # Topic & transaction log replication factors
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+    # Format the KRaft storage on cold start
+    entrypoint:
+      - bash
+      - -c
+      - |
+        kafka-storage format \
+          --cluster-id "$$CLUSTER_ID" \
+          --storage-dir /var/lib/kafka/data
+        exec /etc/confluent/docker/run
+
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - app-net
+
+  #################################
+  # PostgreSQL Databases
+  #################################
+  postgres-order:
+    image: postgres:15
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-order-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+
+  postgres-payment:
+    image: postgres:15
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-payment-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+
+  postgres-inventory:
+    image: postgres:15
+    container_name: postgres-inventory
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-inventory-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+
+  postgres-shipping:
+    image: postgres:15
+    container_name: postgres-shipping
+    environment:
+      POSTGRES_DB: shipping
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg-shipping-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+
+  #################################
+  # Application Microservices
+  #################################
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "8080:8080"
+    networks:
+      - app-net
+
+  order-service:
+    build:
+      context: ./order-service
+    container_name: order-service
+    depends_on:
+      - kafka
+      - postgres-order
+    environment:
+      DB_HOST: postgres-order
+      DB_PORT: 5432
+      DB_NAME: orders
+      DB_USER: user
+      DB_PASS: pass
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "8081:8081"
+    networks:
+      - app-net
+
+  payment-service:
+    build:
+      context: ./payment-service
+    container_name: payment-service
+    depends_on:
+      - kafka
+      - postgres-payment
+    environment:
+      DB_HOST: postgres-payment
+      DB_PORT: 5432
+      DB_NAME: payments
+      DB_USER: user
+      DB_PASS: pass
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "8082:8082"
+    networks:
+      - app-net
+
+  inventory-service:
+    build:
+      context: ./inventory-service
+    container_name: inventory-service
+    depends_on:
+      - kafka
+      - postgres-inventory
+    environment:
+      DB_HOST: postgres-inventory
+      DB_PORT: 5432
+      DB_NAME: inventory
+      DB_USER: user
+      DB_PASS: pass
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "8083:8083"
+    networks:
+      - app-net
+
+  shipping-service:
+    build:
+      context: ./shipping-service
+    container_name: shipping-service
+    depends_on:
+      - kafka
+      - postgres-shipping
+    environment:
+      DB_HOST: postgres-shipping
+      DB_PORT: 5432
+      DB_NAME: shipping
+      DB_USER: user
+      DB_PASS: pass
+      KAFKA_BOOTSTRAP: kafka:9092
+    ports:
+      - "8084:8084"
+    networks:
+      - app-net
+
+#################################
+# Volumes & Networks
+#################################
+volumes:
+  kafka-data:
+  pg-order-data:
+  pg-payment-data:
+  pg-inventory-data:
+  pg-shipping-data:
+
+networks:
+  app-net:
+    driver: bridge

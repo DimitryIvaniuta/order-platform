@@ -1,0 +1,102 @@
+version: "3.9"
+
+services:
+  # Kafka (KRaft mode)
+  kafka:
+    image: confluentinc/cp-kafka:8.0.0.amd64
+    container_name: kafka
+    ports:
+      - "9092:9092"   # client
+      - "9093:9093"   # controller
+    environment:
+      # Required KRaft bootstrap
+      CLUSTER_ID: "k8iw6OLCQ4GgieIWuiz1eQ"
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: "1"
+
+      # Controller quorum
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # Listeners
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      # Single‑node defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+    # Before starting the broker, format the storage using the same CLUSTER_ID
+    entrypoint:
+      - bash
+      - -c
+      - |
+        kafka-storage format \
+          --cluster-id "$$CLUSTER_ID" \
+          --storage-dir /var/lib/kafka/data
+        exec /etc/confluent/docker/run
+
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - kafka-net
+
+  postgres-order:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:    ${DB_NAME_ORDERS}
+      POSTGRES_USER:  ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT_ORDER}:5432"
+    volumes:
+      - pgdata-order:/var/lib/postgresql/data
+
+  postgres-payment:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:    ${DB_NAME_PAYMENTS}
+      POSTGRES_USER:  ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT_PAYMENT}:5432"
+    volumes:
+      - pgdata-payment:/var/lib/postgresql/data
+
+  postgres-inventory:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:    ${DB_NAME_INVENTORY}
+      POSTGRES_USER:  ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT_INVENTORY}:5432"
+    volumes:
+      - pgdata-inventory:/var/lib/postgresql/data
+
+  postgres-shipping:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:    ${DB_NAME_SHIPPING}
+      POSTGRES_USER:  ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT_SHIPPING}:5432"
+    volumes:
+      - pgdata-shipping:/var/lib/postgresql/data
+
+volumes:
+  pgdata-order:
+  pgdata-payment:
+  pgdata-inventory:
+  pgdata-shipping:
+  kafka-data:
+    driver: local
+
+networks:
+  kafka-net:
+    driver: bridge
