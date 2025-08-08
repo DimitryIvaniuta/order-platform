@@ -7,7 +7,7 @@ plugins {
 }
 
 allprojects {
-    group = 'com.example'
+    group = 'com.github.dimitryivaniuta'
     version = '0.1.0'
     repositories {
         mavenCentral()
@@ -30,7 +30,9 @@ subprojects {
     dependencyManagement {
         imports {
             mavenBom "org.springframework.boot:spring-boot-dependencies:3.5.3"
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:2025.0.0"
             mavenBom "io.r2dbc:r2dbc-bom:Arabba-SR2"
+            mavenBom "org.springdoc:springdoc-openapi-bom:2.8.9"
         }
         dependencies {
             // Override the BOM’s commons-lang3 entry:

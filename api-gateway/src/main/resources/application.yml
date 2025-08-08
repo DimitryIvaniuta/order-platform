@@ -1,6 +1,13 @@
 spring:
   application:
     name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Point to your IdP's issuer. Boot will call /.well-known/openid-configuration
+          issuer-uri: ${SECURITY_ISSUER_URI:https://auth.example.com/realms/order-platform}
+          # set a custom jwk cache TTL via bean
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     consumer:

@@ -46,7 +46,7 @@ logging:
   # your existing level & pattern config...
   level:
     root: INFO
-    com.example: DEBUG
+    com.github.dimitryivaniuta: DEBUG
 
   pattern:
     console: "[%d{yyyy‑MM‑dd HH:mm:ss.SSS}] [%thread] %-5level %logger{36} ‑ %msg%n"

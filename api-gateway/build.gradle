@@ -1,17 +1,38 @@
 plugins {
     id 'org.springframework.boot'    // picks up 3.5.3 automatically
     id 'io.spring.dependency-management'
+    id 'java'
 }
 
 dependencies {
     implementation project(':common')
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'io.projectreactor.kafka:reactor-kafka'
     // R2DBC + Postgres (version from BOM)
     implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
     implementation 'io.r2dbc:r2dbc-postgresql'
     implementation 'org.flywaydb:flyway-core'
-    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.9'
+
+    // Spring Cloud Gateway (new starter name in 2025.x)
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway-server-webflux'
+
+    // Circuit breaker (managed by Cloud BOM)
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+
+    // Security: validate JWTs (managed by Boot BOM)
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    // Observability & validation
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // OpenAPI UI (version from SpringDoc BOM)
+    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui'
+
+    // Optional: config metadata hints for IDE
+    compileOnly 'org.springframework.boot:spring-boot-configuration-processor'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
 }
