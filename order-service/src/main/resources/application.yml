@@ -3,13 +3,25 @@ spring:
     name: order-service
 
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT_ORDER:5430}/${DB_NAME_ORDERS:orders}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT_ORDER:5433}/${DB_NAME_ORDERS:orders}
     username: ${DB_USER:user}
     password: ${DB_PASS:pass}
+    pool:
+      enabled: true
+      initial-size: 10
+      max-size: 50
+      max-idle-time: 30s
+      validation-query: SELECT 1
+      max-create-connection-time: 5s
+      max-acquire-time: 5s
+      max-life-time: 30m
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT_ORDER:5433}/${DB_NAME_ORDERS:orders}
+    user: ${DB_USER:user}
+    password: ${DB_PASS:pass}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}

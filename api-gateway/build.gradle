@@ -9,6 +9,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'io.projectreactor.kafka:reactor-kafka'
+
+
+
     // R2DBC + Postgres (version from BOM)
     implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
     implementation 'io.r2dbc:r2dbc-postgresql'
@@ -22,6 +25,8 @@ dependencies {
 
     // Security: validate JWTs (managed by Boot BOM)
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.security:spring-security-oauth2-jose:6.5.2'
+    implementation 'com.nimbusds:nimbus-jose-jwt:10.4.1'
 
     // Observability & validation
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -30,8 +35,8 @@ dependencies {
     // OpenAPI UI (version from SpringDoc BOM)
     implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui'
 
-    // Optional: config metadata hints for IDE
-    compileOnly 'org.springframework.boot:spring-boot-configuration-processor'
+    // for production sources
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 

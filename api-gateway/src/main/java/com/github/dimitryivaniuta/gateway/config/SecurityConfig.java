@@ -5,6 +5,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.github.dimitryivaniuta.gateway.security.JwtProperties;
+import com.github.dimitryivaniuta.gateway.security.ResourceServerJwtProperties;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -37,7 +40,12 @@ import reactor.core.publisher.Mono;
 @Slf4j
 @Configuration
 @EnableWebFluxSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtProperties jwtProperties;
+
+    private final ResourceServerJwtProperties rsJwt;
 
     /**
      * Builds the reactive security filter chain for the API Gateway.

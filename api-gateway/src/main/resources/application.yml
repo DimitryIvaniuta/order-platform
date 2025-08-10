@@ -6,7 +6,7 @@ spring:
       resourceserver:
         jwt:
           # Point to your IdP's issuer. Boot will call /.well-known/openid-configuration
-          issuer-uri: ${SECURITY_ISSUER_URI:https://auth.example.com/realms/order-platform}
+          issuer-uri: ${SECURITY_ISSUER_URI:http://localhost:8080}
           # set a custom jwk cache TTL via bean
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
@@ -16,6 +16,9 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  # WebFlux base path
+  webflux:
+    base-path: /api
 
 server:
   port: ${GATEWAY_PORT:8080}
@@ -34,3 +37,21 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+security:
+  jwt:
+    # Make sure the token 'iss' you stamp in AuthController matches the issuer above
+    # when running in Docker Compose, set SECURITY_ISSUER_URI=http://api-gateway:8080
+    issuer: ${SECURITY_ISSUER_URI:http://localhost:8080}
+    audience: order-platform-gateway
+    access-token-ttl: PT10M
+    key-rotation-interval: PT24H
+    key-retention: PT48H
+  authz:
+    tenant-claim: mt
+    keycloak-tenant-resource-prefix: tenant:
+    scope-authority-prefix: SCOPE_
+    tenant-role-authority-pattern: TENANT_%s:%s
+    map-audience-to-authorities: false
+    audience-authority-prefix: AUD_
+    tenant-header: X-Tenant-ID
