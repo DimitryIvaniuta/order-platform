@@ -1,7 +1,6 @@
-package com.github.dimitryivaniuta.gateway.security;
+package com.github.dimitryivaniuta.gateway.config;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.function.Function;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.ReactiveAuthorizationManager;

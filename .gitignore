@@ -3,6 +3,7 @@
 .env
 build
 log
+logs
 # Compiled class file
 *.class
 
