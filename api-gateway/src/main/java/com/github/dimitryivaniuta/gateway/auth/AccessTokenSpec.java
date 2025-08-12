@@ -1,17 +1,18 @@
 package com.github.dimitryivaniuta.gateway.auth;
 
+import lombok.Builder;
 import lombok.Getter;
-import lombok.Value;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Immutable token specification for {@link #issueAccessToken(AccessTokenSpec)}.
+ * Immutable token specification.
  * Keep all fields minimal and serializable-friendly; extend as needed.
  */
 @Getter
+@Builder
 public class AccessTokenSpec {
     /** Optional audience override; defaults to {@code security.jwt.audience}. */
     String audienceOverride;
@@ -50,16 +51,15 @@ public class AccessTokenSpec {
      * @return spec instance without overrides
      */
     public static AccessTokenSpec of(final String userId, final String username, final String tenantId, final List<String> scopes) {
-        return new AccessTokenSpec(
-                null,          // audienceOverride
-                null,          // additionalClaims
-                null,          // mt
-                null,          // jti
-                scopes,        // scopes
-                tenantId,      // tenantId
-                null,          // ttlOverride
-                userId,        // userId
-                username       // username
-        );
+        return AccessTokenSpec.builder()
+                .audienceOverride(null)
+                .additionalClaims(null)
+                .mt(null)
+                .scopes(scopes)
+                .tenantId(tenantId)
+                .ttlOverride(null)
+                .userId(userId)
+                .username(username)
+                .build();
     }
 }

@@ -1,41 +1,37 @@
 package com.github.dimitryivaniuta.gateway.config;
 
 import java.time.Duration;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 import com.github.dimitryivaniuta.gateway.security.JwtProperties;
 import com.github.dimitryivaniuta.gateway.security.ResourceServerJwtProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
-import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import reactor.core.publisher.Mono;
 
 /**
- * Reactive WebFlux security configuration:
- * <ul>
- *   <li>JWT validation via issuer discovery (JWKS key rotation handled automatically)</li>
- *   <li>Issuer, timestamp (with clock skew), and audience validation</li>
- *   <li>Authority mapping from scopes and Keycloak roles</li>
- * </ul>
+ * Reactive security configuration.
+ * Validates JWT via issuer discovery or JWK set, adds timestamp and audience validators,
+ * uses a reactive JwtAuthenticationConverter, and enforces tenant-aware route rules.
  */
 @Slf4j
 @Configuration
@@ -43,91 +39,105 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    /** Audience, issuer and token parameters. */
     private final JwtProperties jwtProperties;
 
-    private final ResourceServerJwtProperties rsJwt;
+    /** Issuer and optional jwk-set-uri for resource-server validation. */
+    private final ResourceServerJwtProperties resourceProps;
 
-    /**
-     * Builds the reactive security filter chain for the API Gateway.
-     *
-     * @param http              reactive HTTP security
-     * @param jwtDecoder        reactive JWT decoder (issuer discovery + validators)
-     * @param jwtAuthConverter  converter mapping {@link Jwt} to {@link AbstractAuthenticationToken}
-     * @return the configured {@link SecurityWebFilterChain}
-     */
+    /** Reactive converter wrapping JwtAuthenticationConverter with custom authorities logic. */
+    private final Converter<Jwt, Mono<AbstractAuthenticationToken>> reactiveJwtAuthConverter;
+
     @Bean
-    public SecurityWebFilterChain securityFilterChain(
-            final ServerHttpSecurity http,
-            final ReactiveJwtDecoder jwtDecoder,
-            final Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthConverter) {
-
-        return http
+    public SecurityWebFilterChain springSecurityFilterChain(final ServerHttpSecurity http) {
+        http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .pathMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                .cors(c -> c.configurationSource(corsConfigurationSource()))
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .logout(ServerHttpSecurity.LogoutSpec::disable)
+                .authorizeExchange(ex -> ex
+                        .pathMatchers(
+                                "/actuator/**",
+                                "/.well-known/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/auth/login"
+                        ).permitAll()
+                        .pathMatchers(HttpMethod.GET, "/t/**/orders/**")
+                        .access(TenantPermissionAuthorizationManager.requires("ORDER_READ"))
+                        .pathMatchers(HttpMethod.POST, "/t/**/orders/**")
+                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
+                        .pathMatchers(HttpMethod.PUT, "/t/**/orders/**")
+                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
+                        .pathMatchers(HttpMethod.DELETE, "/t/**/orders/**")
+                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
                         .anyExchange().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2
+                .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt
-                                .jwtDecoder(jwtDecoder)
-                                .jwtAuthenticationConverter(jwtAuthConverter)
+                                .jwtDecoder(reactiveJwtDecoder())
+                                .jwtAuthenticationConverter(reactiveJwtAuthConverter)
                         )
-                )
-                .build();
+                );
+
+        return http.build();
     }
 
     /**
-     * Creates a {@link ReactiveJwtDecoder} from the OpenID Connect issuer.
-     * <p>Validators applied:</p>
-     * <ul>
-     *   <li>Default + issuer validation ({@link JwtValidators#createDefaultWithIssuer(String)})</li>
-     *   <li>Timestamp validation with 60s clock skew ({@link JwtTimestampValidator})</li>
-     *   <li>Audience validation ({@link RequiredAudienceValidator})</li>
-     * </ul>
-     *
-     * @param issuer the OIDC issuer URI (e.g. {@code https://auth.example.com/realms/order-platform})
-     * @return configured {@link ReactiveJwtDecoder}
+     * Reactive JWT decoder built from issuer or JWK set and composed validators.
+     * Validators:
+     * - JwtTimestampValidator with 2 minutes skew
+     * - RequiredAudienceValidator if audience is configured
      */
     @Bean
-    public ReactiveJwtDecoder jwtDecoder(
-            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") final String issuer) {
+    public ReactiveJwtDecoder reactiveJwtDecoder() {
+        final NimbusReactiveJwtDecoder decoder =
+                resourceProps.hasJwks()
+                        ? NimbusReactiveJwtDecoder.withJwkSetUri(resourceProps.getJwkSetUri()).build()
+                        : NimbusReactiveJwtDecoder.withIssuerLocation(resourceProps.getIssuerUri()).build();
 
-        NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuer).build();
+        JwtTimestampValidator ts = new JwtTimestampValidator(Duration.ofMinutes(2));
 
-        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuer);
-        OAuth2TokenValidator<Jwt> withTimestamp = new JwtTimestampValidator(Duration.ofSeconds(60));
-        OAuth2TokenValidator<Jwt> withAudience =
-                new RequiredAudienceValidator(List.of("order-platform-gateway")); // TODO: set your accepted audience(s)
+        List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+        validators.add(ts);
 
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(withIssuer, withTimestamp, withAudience));
+        List<String> allowedAudiences = parseAudiences(jwtProperties.getAudience());
+        if (!allowedAudiences.isEmpty()) {
+            validators.add(new RequiredAudienceValidator(allowedAudiences));
+        }
+
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
         return decoder;
     }
 
-    /**
-     * Reactive converter that maps scopes and Keycloak roles to authorities.
-     * <ul>
-     *   <li>Scopes claim ({@code scope}/{@code scp}) → {@code SCOPE_*}</li>
-     *   <li>Keycloak {@code realm_access.roles} and {@code resource_access.*.roles} → {@code ROLE_*}</li>
-     * </ul>
-     *
-     * @return a converter producing {@link JwtAuthenticationToken}
-     */
     @Bean
-    public Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthConverter() {
-        return jwt -> {
-            Set<GrantedAuthority> authorities = new HashSet<>();
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("*"));
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setExposedHeaders(List.of("X-Correlation-ID"));
+        cfg.setAllowCredentials(false);
+        cfg.setMaxAge(3600L);
 
-            // 1) scopes → SCOPE_*
-            JwtGrantedAuthoritiesConverter scopeConverter = new JwtGrantedAuthoritiesConverter();
-            scopeConverter.setAuthorityPrefix("SCOPE_");
-            scopeConverter.setAuthoritiesClaimName("scope"); // falls back to 'scp' if needed
-            authorities.addAll(scopeConverter.convert(jwt));
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cfg);
+        return source;
+    }
 
-            // 2) Keycloak roles → ROLE_*
-            authorities.addAll(KeycloakAuthoritiesExtractor.extract(jwt));
-
-            return Mono.just(new JwtAuthenticationToken(jwt, authorities));
-        };
+    /**
+     * Parses a comma-separated audience string into a list.
+     * Accepts single value or "aud1,aud2,aud3".
+     */
+    private static List<String> parseAudiences(final String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 }

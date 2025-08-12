@@ -1,20 +1,16 @@
-package com.github.dimitryivaniuta.gateway.http;
+package com.github.dimitryivaniuta.gateway.web;
 
 import com.github.dimitryivaniuta.gateway.dto.CreateOrderRequest;
-import com.github.dimitryivaniuta.gateway.dto.OrderLine;
 import com.github.dimitryivaniuta.gateway.saga.OrderSagaGatewayFacade;
 import com.github.dimitryivaniuta.gateway.saga.SagaEventBus;
 import com.github.dimitryivaniuta.gateway.saga.SagaStatusEntity;
 import com.github.dimitryivaniuta.gateway.saga.SagaStatusRepository;
-import com.github.dimitryivaniuta.gateway.saga.msg.OrderCreateCommand;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotNull;
+
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import lombok.Data;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;

@@ -1,22 +1,35 @@
 spring:
   application:
     name: api-gateway
+
   security:
     oauth2:
       resourceserver:
         jwt:
-          # Point to your IdP's issuer. Boot will call /.well-known/openid-configuration
+          # Boot will call /.well-known/openid-configuration on this issuer
           issuer-uri: ${SECURITY_ISSUER_URI:http://localhost:8080}
-          # set a custom jwk cache TTL via bean
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
-    consumer:
-      group-id: api-gateway
-      auto-offset-reset: earliest
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-  # WebFlux base path
+
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT_GATEWAY:5437}/${DB_NAME_GATEWAY:gateway}
+    username: ${DB_USER:user}
+    password: ${DB_PASS:pass}
+    pool:
+      enabled: true
+      initial-size: 10
+      max-size: 50
+      max-idle-time: 30s
+      validation-query: SELECT 1
+      max-acquire-time: 5s
+      max-create-connection-time: 5s
+      max-life-time: 30m
+
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT_GATEWAY:5437}/${DB_NAME_GATEWAY:gateway}
+    user: ${DB_USER:user}
+    password: ${DB_PASS:pass}
+    locations: classpath:db/migration
+
   webflux:
     base-path: /api
 
@@ -40,8 +53,7 @@ springdoc:
 
 security:
   jwt:
-    # Make sure the token 'iss' you stamp in AuthController matches the issuer above
-    # when running in Docker Compose, set SECURITY_ISSUER_URI=http://api-gateway:8080
+    # When running in Docker Compose, set SECURITY_ISSUER_URI=http://api-gateway:8080
     issuer: ${SECURITY_ISSUER_URI:http://localhost:8080}
     audience: order-platform-gateway
     access-token-ttl: PT10M
@@ -49,9 +61,41 @@ security:
     key-retention: PT48H
   authz:
     tenant-claim: mt
-    keycloak-tenant-resource-prefix: tenant:
+    keycloak-tenant-resource-prefix: "tenant:"
     scope-authority-prefix: SCOPE_
     tenant-role-authority-pattern: TENANT_%s:%s
     map-audience-to-authorities: false
     audience-authority-prefix: AUD_
     tenant-header: X-Tenant-ID
+
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  client-id: api-gateway
+  group-id: api-gateway-consumer
+  acks: all
+  compression-type: lz4
+  command-topic:
+    order-create: order.command.create.v1
+  event-topics:
+    - order.events.v1
+    - payment.events.v1
+    - inventory.events.v1
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 50
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 2s
+        minimumNumberOfCalls: 20
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 5
+      orderSvc:
+        baseConfig: default
+  timeLimiter:
+    instances:
+      orderSvc:
+        timeoutDuration: 3s

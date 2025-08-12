@@ -1,12 +1,7 @@
 package com.github.dimitryivaniuta.gateway.config;
 
-
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.core.OAuth2Error;
