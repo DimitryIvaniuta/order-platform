@@ -1,5 +1,6 @@
 package com.github.dimitryivaniuta.gateway.config;
 
+import com.github.dimitryivaniuta.gateway.kafka.GatewayKafkaProperties;
 import com.github.dimitryivaniuta.gateway.security.JwtProperties;
 import com.github.dimitryivaniuta.gateway.security.MultiTenantAuthzProperties;
 import com.github.dimitryivaniuta.gateway.security.ResourceServerJwtProperties;
@@ -13,7 +14,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @EnableConfigurationProperties({
         JwtProperties.class,
         ResourceServerJwtProperties.class,
-        MultiTenantAuthzProperties.class
+        MultiTenantAuthzProperties.class,
+        GatewayKafkaProperties.class,
 })
 public class GatewayPropertiesAutoConfiguration {
     // no beans needed; we just register properties
