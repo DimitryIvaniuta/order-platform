@@ -1,26 +1,18 @@
 package com.github.dimitryivaniuta.gateway.dto;
 
-import lombok.Data;
 
-/** Token response following OAuth 2.0 Bearer token response fields. */
-@Data
-public final class TokenResponse {
-    /** Access token in compact JWS form. */
-    private final String access_token;
+import java.util.Map;
 
-    /** Token type, always "Bearer". */
-    private final String token_type;
-
-    /** Expiration in seconds. */
-    private final int expires_in;
-
-    /** Issued-at in epoch seconds. */
-    private final long issued_at;
-
-    /** Granted scopes (space-delimited). */
-    private final String scope;
-
-    /** Tenant identifier echoed back for client convenience. */
-    private final String tenant_id;
-}
-
+/**
+ * OAuth2-style token response.
+ */
+public record TokenResponse(
+        /** The signed RS256 JWT. */
+        String access_token,
+        /** Always "Bearer". */
+        String token_type,
+        /** Expiration (seconds). */
+        long expires_in,
+        /** Additional convenience properties (e.g., scope). */
+        Map<String, Object> ext
+) { }

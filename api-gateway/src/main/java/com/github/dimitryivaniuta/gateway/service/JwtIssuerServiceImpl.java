@@ -1,4 +1,4 @@
-package com.github.dimitryivaniuta.gateway.auth;
+package com.github.dimitryivaniuta.gateway.service;
 
 import com.github.dimitryivaniuta.gateway.dto.MintedToken;
 import com.github.dimitryivaniuta.gateway.security.JwtKeyManager;

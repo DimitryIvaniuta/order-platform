@@ -1,19 +1,25 @@
-package com.github.dimitryivaniuta.gateway.auth;
+package com.github.dimitryivaniuta.gateway.web;
 
+import com.github.dimitryivaniuta.gateway.dto.LoginRequest;
+import com.github.dimitryivaniuta.gateway.dto.TokenResponse;
+import com.github.dimitryivaniuta.gateway.model.RoleRepository;
+import com.github.dimitryivaniuta.gateway.model.UserEntity;
+import com.github.dimitryivaniuta.gateway.model.UserRepository;
+import com.github.dimitryivaniuta.gateway.model.UserRoleRepository;
+import com.github.dimitryivaniuta.gateway.model.UserStatus;
+import com.github.dimitryivaniuta.gateway.service.AuthService;
+import com.github.dimitryivaniuta.gateway.service.JwtIssuerService;
 import com.github.dimitryivaniuta.gateway.dto.MintedToken;
 import com.github.dimitryivaniuta.gateway.dto.UserWithRoles;
-import com.github.dimitryivaniuta.gateway.model.*;
 import com.github.dimitryivaniuta.gateway.security.JwtProperties;
 import com.github.dimitryivaniuta.gateway.service.UserRoleService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -56,15 +62,7 @@ public class AuthController {
     /** Issues signed RS256 JWTs (delegated signer). */
     private final JwtIssuerService tokenService;
 
-    /** Reactive user repository. */
-    private final UserRepository userRepository;
-
-    /** Reactive user-role repository (role lookups for token claims). */
-    private final UserRoleRepository userRoleRepository;
-
-    private final RoleRepository roleRepository;
-    private final UserRoleService userRoleService;
-
+    private final AuthService authService;
 
     /**
      * Login endpoint that returns a signed RS256 access token on success.
@@ -77,8 +75,7 @@ public class AuthController {
         final String principal = req.getUsernameOrEmail().trim();
 
         // 1) Find user by username or email (case-insensitive)
-        Mono<UserEntity> userMono = userRepository.findByUsernameIgnoreCase(principal)
-                .switchIfEmpty(userRepository.findByEmailIgnoreCase(principal));
+        Mono<UserEntity> userMono = authService.findByUsername(principal);
 
         return userMono
                 .switchIfEmpty(Mono.error(unauthorized("Invalid credentials")))
@@ -98,7 +95,7 @@ public class AuthController {
                                         : Mono.error(unauthorized("Invalid credentials"))))
                 // 4) Load role names for the user
                 .flatMap(user ->
-                        userRoleRepository.roleNamesForUser(user.getId()).collectList()
+                        authService.findRoleNamesForUser(user.getId())
                                 .map(roles -> new UserWithRoles(user, roles)))
                 // 5) Build scopes + mt map
                 .flatMap(uwr -> {
@@ -155,35 +152,5 @@ public class AuthController {
         extras.put("scope", scopeStr);
         return new TokenResponse(token.accessToken(), "Bearer", seconds, extras);
     }
-
-    /**
-     * Login request payload.
-     */
-    @Data
-    public static final class LoginRequest {
-        /** Username or email (CI lookup). */
-        @NotBlank
-        private String usernameOrEmail;
-        /** Password in clear; verified with BCrypt. */
-        @NotBlank
-        private String password;
-        /** Target tenant id (required for mt claim). */
-        @NotBlank
-        private String tenantId;
-    }
-
-    /**
-     * OAuth2-style token response.
-     */
-    public record TokenResponse(
-            /** The signed RS256 JWT. */
-            String access_token,
-            /** Always "Bearer". */
-            String token_type,
-            /** Expiration (seconds). */
-            long expires_in,
-            /** Additional convenience properties (e.g., scope). */
-            Map<String, Object> ext
-    ) { }
 
 }
