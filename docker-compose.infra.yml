@@ -45,6 +45,17 @@ services:
     networks:
       - kafka-net
 
+  postgres-gateway:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:    ${DB_NAME_GATEWAY}
+      POSTGRES_USER:  ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "${DB_PORT_GATEWAY}:5432"
+    volumes:
+      - pgdata-gateway:/var/lib/postgresql/data
+
   postgres-order:
     image: postgres:latest
     environment:
@@ -90,6 +101,7 @@ services:
       - pgdata-shipping:/var/lib/postgresql/data
 
 volumes:
+  pgdata-gateway:
   pgdata-order:
   pgdata-payment:
   pgdata-inventory:

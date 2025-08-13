@@ -83,7 +83,7 @@ kafka:
 
 resilience4j:
   circuitbreaker:
-    instances:
+    configs:
       default:
         slidingWindowType: COUNT_BASED
         slidingWindowSize: 50
@@ -93,9 +93,15 @@ resilience4j:
         minimumNumberOfCalls: 20
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 5
-      orderSvc:
-        baseConfig: default
-  timeLimiter:
+        registerHealthIndicator: true
     instances:
       orderSvc:
+        baseConfig: default
+
+  timelimiter:
+    configs:
+      default:
         timeoutDuration: 3s
+    instances:
+      orderSvc:
+        baseConfig: default

@@ -3,14 +3,22 @@ package com.github.dimitryivaniuta.gateway.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-/** Login request body. */
+/**
+ * Login request payload.
+ */
 @Data
 public final class LoginRequest {
-    /** User's password (plaintext for verification only). */
+
+    /** Username or email (CI lookup). */
+    @NotBlank
+    private String usernameOrEmail;
+    /** Password in clear; verified with BCrypt. */
+
     @NotBlank
     private String password;
 
-    /** Username or login handle (case-insensitive). */
+    /** Target tenant id (required for mt claim). */
     @NotBlank
-    private String username;
+    private String tenantId;
+
 }

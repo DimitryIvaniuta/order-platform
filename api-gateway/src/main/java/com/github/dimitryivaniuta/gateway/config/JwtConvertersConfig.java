@@ -4,6 +4,7 @@ import com.github.dimitryivaniuta.gateway.security.MultiTenantAuthoritiesConvert
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -23,7 +24,7 @@ public class JwtConvertersConfig {
      * Reactive adapter that builds JwtAuthenticationToken using our custom authorities.
      */
     @Bean
-    public org.springframework.core.convert.converter.Converter<Jwt, Mono<AbstractAuthenticationToken>>
+    public Converter<Jwt, Mono<AbstractAuthenticationToken>>
     reactiveJwtAuthConverter() {
 
         JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();

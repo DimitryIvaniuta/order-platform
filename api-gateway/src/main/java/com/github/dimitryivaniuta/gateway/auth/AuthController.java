@@ -2,11 +2,9 @@ package com.github.dimitryivaniuta.gateway.auth;
 
 import com.github.dimitryivaniuta.gateway.dto.MintedToken;
 import com.github.dimitryivaniuta.gateway.dto.UserWithRoles;
-import com.github.dimitryivaniuta.gateway.model.UserEntity;
-import com.github.dimitryivaniuta.gateway.model.UserRepository;
-import com.github.dimitryivaniuta.gateway.model.UserRoleRepository;
-import com.github.dimitryivaniuta.gateway.model.UserStatus;
+import com.github.dimitryivaniuta.gateway.model.*;
 import com.github.dimitryivaniuta.gateway.security.JwtProperties;
+import com.github.dimitryivaniuta.gateway.service.UserRoleService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Duration;
@@ -63,6 +61,10 @@ public class AuthController {
 
     /** Reactive user-role repository (role lookups for token claims). */
     private final UserRoleRepository userRoleRepository;
+
+    private final RoleRepository roleRepository;
+    private final UserRoleService userRoleService;
+
 
     /**
      * Login endpoint that returns a signed RS256 access token on success.
@@ -153,8 +155,6 @@ public class AuthController {
         extras.put("scope", scopeStr);
         return new TokenResponse(token.accessToken(), "Bearer", seconds, extras);
     }
-
-    // ---------- DTOs ----------
 
     /**
      * Login request payload.
