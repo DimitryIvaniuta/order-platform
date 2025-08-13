@@ -99,7 +99,7 @@ public class OrderSagaGatewayFacade {
                 .totalAmount(total)
                 .lines(lines).build();
 
-        // 1) Persist initial status → 2) publish to SSE → 3) send command → 4) return sagaId
+        // 1) Persist initial status -> 2) publish to SSE -> 3) send command -> 4) return sagaId
         return sagaRepo.save(seed)
                 .doOnSuccess(saved -> {
                     // Push the initial state to SSE so clients instantly see "STARTED".

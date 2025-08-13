@@ -2,7 +2,6 @@ package com.github.dimitryivaniuta.gateway.util;
 
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.reactivestreams.Publisher;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -57,8 +56,6 @@ public class CorrelationIdFilter implements GlobalFilter, WebFilter, Ordered {
         return chain.filter(exchange).contextWrite(ctx -> ctx.put(CTX_CORRELATION_ID, id));
     }
 
-    // Ordered
-
     /**
      * Run very early so the header is available to subsequent filters/handlers.
      */
@@ -66,8 +63,6 @@ public class CorrelationIdFilter implements GlobalFilter, WebFilter, Ordered {
     public int getOrder() {
         return Ordered.HIGHEST_PRECEDENCE + 10;
     }
-
-    // Helpers
 
     /**
      * Ensures the request contains an {@code X-Correlation-ID}; if missing, generates one,
@@ -77,26 +72,47 @@ public class CorrelationIdFilter implements GlobalFilter, WebFilter, Ordered {
      * @return the correlation id value present after mutation
      */
     private String ensureCorrelationId(final ServerWebExchange exchange) {
-        String id = exchange.getRequest().getHeaders().getFirst(HEADER_CORRELATION_ID);
-        if (id == null || id.isBlank()) {
-            id = UUID.randomUUID().toString();
-            ServerHttpRequest mutated = exchange.getRequest().mutate()
-                    .headers(h -> h.set(HEADER_CORRELATION_ID, id))
+        // 1) If another filter already stored it, reuse and mirror on the response.
+        final String cached = exchange.getAttribute(ATTR_CORRELATION_ID);
+        if (cached != null && !cached.isBlank()) {
+            exchange.getResponse().getHeaders().set(HEADER_CORRELATION_ID, cached);
+            return cached;
+        }
+
+        // 2) Read from request header and normalize.
+        final String raw = exchange.getRequest().getHeaders().getFirst(HEADER_CORRELATION_ID);
+        String cid = normalizeCorrelationId(raw);
+
+        // 3) If missing/invalid, generate and mutate the request with an effectively-final var.
+        if (cid == null) {
+            cid = UUID.randomUUID().toString();
+            final String toSet = cid; // effectively final for the lambda
+            final ServerHttpRequest mutated = exchange.getRequest()
+                    .mutate()
+                    .headers(h -> h.set(HEADER_CORRELATION_ID, toSet))
                     .build();
             exchange.mutate().request(mutated).build();
             if (log.isDebugEnabled()) {
-                log.debug("Generated new correlation id {}", id);
+                log.debug("Generated new correlation id {}", toSet);
             }
         }
-        exchange.getAttributes().put(ATTR_CORRELATION_ID, id);
-        return id;
+
+        // 4) Expose for downstream code and mirror to response for clients.
+        exchange.getAttributes().put(ATTR_CORRELATION_ID, cid);
+        exchange.getResponse().getHeaders().set(HEADER_CORRELATION_ID, cid);
+        return cid;
     }
 
     /**
-     * Utility to resolve the correlation id from an exchange (attribute first, then header).
+     * Returns a sanitized correlation id or null if the incoming value is unusable.
+     * Simple guards prevent header abuse (blank/oversized values).
      */
-    public static String resolve(final ServerWebExchange exchange) {
-        String id = exchange.getAttribute(ATTR_CORRELATION_ID);
-        return (id != null) ? id : exchange.getRequest().getHeaders().getFirst(HEADER_CORRELATION_ID);
+    private String normalizeCorrelationId(final String raw) {
+        if (raw == null) return null;
+        final String v = raw.trim();
+        if (v.isEmpty()) return null;
+        if (v.length() > 200) return null; // defensive size cap
+        return v;
     }
+
 }

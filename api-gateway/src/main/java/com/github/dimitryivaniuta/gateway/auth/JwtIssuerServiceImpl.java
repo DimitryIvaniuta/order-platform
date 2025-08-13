@@ -18,16 +18,11 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 /**
  * Issues RS256 signed JWT access tokens using the active RSA key.
- *
- * Claims included:
- * - iss, aud, sub, iat, nbf, exp, jti
- * - preferred_username, email (optional)
- * - scope (space-delimited)
- * - tenant_id
- * - mt (multi-tenant roles map)
+ * Claims: iss, aud, sub, iat, nbf, exp, jti, preferred_username, email, scope, tenant_id, mt.
  */
 @Slf4j
 @Service
@@ -41,7 +36,7 @@ public class JwtIssuerServiceImpl implements JwtIssuerService {
     private final JwtKeyManager keyManager;
 
     @Override
-    public reactor.core.publisher.Mono<MintedToken> mintAccessToken(
+    public Mono<MintedToken> mintAccessToken(
             final String subject,
             final String tenantId,
             final Map<String, List<String>> mt,
@@ -49,26 +44,28 @@ public class JwtIssuerServiceImpl implements JwtIssuerService {
             final String username,
             final String email
     ) {
-        return reactor.core.publisher.Mono.fromCallable(() -> {
-            // Resolve signing key and header with kid
-            RSAKey rsa = keyManager.getActive();
-            RSASSASigner signer = new RSASSASigner(rsa.toPrivateKey());
-            JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
+        return Mono.fromCallable(() -> {
+            // Get current signing key from your manager
+            RSAKey rsa = keyManager.currentSigningKey();
+            if (rsa == null || rsa.toPrivateKey() == null) {
+                throw new IllegalStateException("No active signing key available");
+            }
+
+            var signer = new RSASSASigner(rsa.toPrivateKey());
+            var header = new JWSHeader.Builder(JWSAlgorithm.RS256)
                     .keyID(rsa.getKeyID())
                     .build();
 
-            // Timestamps
-            Instant now = Instant.now();
+            var now = Instant.now();
             Duration ttl = jwtProperties.getAccessTokenTtl();
-            if (ttl == null || ttl.isNegative() || ttl.isZero()) {
+            if (ttl == null || ttl.isZero() || ttl.isNegative()) {
                 ttl = Duration.ofMinutes(10);
             }
-            Instant exp = now.plus(ttl);
+            var exp = now.plus(ttl);
 
-            // Standard and custom claims
-            JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
+            var claims = new JWTClaimsSet.Builder()
                     .issuer(jwtProperties.getIssuer())
-                    .audience(jwtProperties.getAudience())
+                    .audience(jwtProperties.getAudience())      // supports String vararg
                     .subject(subject)
                     .issueTime(Date.from(now))
                     .notBeforeTime(Date.from(now))
@@ -83,12 +80,13 @@ public class JwtIssuerServiceImpl implements JwtIssuerService {
                 claims.claim("email", email);
             }
 
-            SignedJWT jwt = new SignedJWT(header, claims.build());
+            var jwt = new SignedJWT(header, claims.build());
             jwt.sign(signer);
 
-            String token = jwt.serialize();
+            var token = jwt.serialize();
             if (log.isDebugEnabled()) {
-                log.debug("Minted JWT sub={} tenant={} aud={} exp={}", subject, tenantId, jwtProperties.getAudience(), exp);
+                log.debug("Minted JWT sub={} tenant={} aud={} kid={} exp={}",
+                        subject, tenantId, jwtProperties.getAudience(), rsa.getKeyID(), exp);
             }
             return new MintedToken(token, ttl);
         });

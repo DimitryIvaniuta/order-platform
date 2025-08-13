@@ -49,7 +49,7 @@ public class OrderGatewayController {
     /**
      * Starts an Order Create Saga for the given tenant.
      * <p>
-     * Flow: validate + compute total → seed {@code saga_status} (STARTED) → send Kafka command →
+     * Flow: validate + compute total -> seed {@code saga_status} (STARTED) -> send Kafka command ->
      * return {@code sagaId}. The client can poll {@code /sagas/{id}} or open SSE at
      * {@code /sagas/{id}/stream} to follow the progress.
      *
@@ -84,7 +84,7 @@ public class OrderGatewayController {
                 .map(l -> l.unitPrice().multiply(BigDecimal.valueOf(l.quantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Start the saga via the facade (seed status → send command)
+        // Start the saga via the facade (seed status -> send command)
         return facade.startOrderCreate(tenant, userId, req.getCustomerId(), req.getLines(), total, headers)
                 .map(id -> Map.of("sagaId", id.toString(),
                         "statusUrl", "/sagas/" + id));

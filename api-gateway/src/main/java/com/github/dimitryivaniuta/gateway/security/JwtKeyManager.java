@@ -54,7 +54,7 @@ public class JwtKeyManager {
     }
 
     /** Rotate the signing key on a fixed delay. */
-    @Scheduled(fixedDelayString = "#{@jwtProperties.keyRotationInterval.toMillis()}")
+    @Scheduled(fixedDelayString = "${security.jwt.key-rotation-interval:PT24H}")
     public void rotateScheduled() {
         rotateNow();
         pruneExpired();

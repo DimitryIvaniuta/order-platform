@@ -65,13 +65,13 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/auth/login"
                         ).permitAll()
-                        .pathMatchers(HttpMethod.GET, "/t/**/orders/**")
+                        .pathMatchers(HttpMethod.GET, "/t/{tenant}/orders/**")
                         .access(TenantPermissionAuthorizationManager.requires("ORDER_READ"))
-                        .pathMatchers(HttpMethod.POST, "/t/**/orders/**")
+                        .pathMatchers(HttpMethod.POST, "/t/{tenant}/orders/**")
                         .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
-                        .pathMatchers(HttpMethod.PUT, "/t/**/orders/**")
+                        .pathMatchers(HttpMethod.PUT, "/t/{tenant}/orders/**")
                         .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
-                        .pathMatchers(HttpMethod.DELETE, "/t/**/orders/**")
+                        .pathMatchers(HttpMethod.DELETE, "/t/{tenant}/orders/**")
                         .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
                         .anyExchange().authenticated()
                 )
