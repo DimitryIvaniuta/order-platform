@@ -1,0 +1,190 @@
+{
+  "info": {
+    "name": "Order Platform \u2014 Gateway + Orders (v2)",
+    "_postman_id": "5322b66f-c58a-4a6c-8b30-63ca8b6a7169",
+    "description": "E2E tests for API-Gateway + Orders. Login returns `access_token`; orders inherit Bearer {{access_token}}. Paths use /api/* as in the screenshot.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (returns access_token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url_gateway}}/api/auth/login",
+              "host": [
+                "{{base_url_gateway}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrEmail\": \"{{usernameOrEmail}}\",\n  \"password\": \"{{password}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}"
+            },
+            "description": "Stores access_token to environment \u2192 {{access_token}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function(){ pm.response.to.have.status(200); });",
+                  "var data = pm.response.json();",
+                  "pm.expect(data).to.have.property('access_token');",
+                  "pm.environment.set('access_token', data.access_token);",
+                  "// Optional: save token_type, expires_in",
+                  "if (data.token_type) pm.environment.set('token_type', data.token_type);",
+                  "if (data.expires_in) pm.environment.set('expires_in', data.expires_in);",
+                  "",
+                  "// Decode JWT (no signature verify) just to check mt claim",
+                  "function base64UrlDecode(str){str=str.replace(/-/g,'+').replace(/_/g,'/');var pad=str.length%4;if(pad){str+='='.repeat(4-pad);}return atob(str);}",
+                  "var parts = data.access_token.split('.');",
+                  "if (parts.length === 3) {",
+                  "  var payload = JSON.parse(base64UrlDecode(parts[1]));",
+                  "  pm.environment.set('jwt_payload', JSON.stringify(payload, null, 2));",
+                  "  if (payload.mt) {",
+                  "    pm.test('mt (tenant) claim present', function(){ pm.expect(payload.mt).to.exist; });",
+                  "  }",
+                  "} else {",
+                  "  console.warn('Token does not look like JWT');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Orders (via Gateway)",
+      "auth": {
+        "type": "inherit"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Generate correlation id if missing",
+              "if(!pm.environment.get('correlation_id')){",
+              "  function uuidv4(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);});}",
+              "  pm.environment.set('correlation_id', uuidv4());",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlation_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url_gateway}}/api/orders",
+              "host": [
+                "{{base_url_gateway}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"totalAmount\": 123.45\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Created 201', function(){ pm.response.to.have.status(201); });",
+                  "var o = pm.response.json();",
+                  "pm.environment.set('order_id', o.id);",
+                  "var cid = pm.response.headers.get('X-Correlation-Id'); if (cid) pm.environment.set('correlation_id', cid);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url_gateway}}/api/orders/{{order_id}}",
+              "host": [
+                "{{base_url_gateway}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{order_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Gateway Health",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url_gateway}}/actuator/health",
+              "host": [
+                "{{base_url_gateway}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

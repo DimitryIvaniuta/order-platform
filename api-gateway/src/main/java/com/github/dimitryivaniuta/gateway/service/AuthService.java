@@ -34,7 +34,11 @@ public class AuthService {
     }
 
     public Mono<List<String>> findRoleNamesForUser(Long userId) {
-        return userRoleRepository.roleNamesForUser(userId).collectList();
+        return userRoleRepository.findRoleNamesByUserId(userId)
+                .map(r->{
+                    return r.name();
+                })
+                .collectList();
     }
 
 }

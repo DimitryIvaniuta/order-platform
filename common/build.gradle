@@ -1,7 +1,33 @@
 plugins {
     id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+group = "com.github.dimitryivaniuta"
+version = "0.1.0"
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
 }
 
 dependencies {
-    // Define any shared DTO, util, or constant libraries here
+    // Expose Security types used in your public APIs (Jwt, converters, validators).
+    // Mark as `api` so consuming services compile without adding duplicates.
+    api "io.projectreactor:reactor-core"
+    api "org.springframework.security:spring-security-oauth2-resource-server"
+    api "org.springframework.security:spring-security-oauth2-jose"
+
+    // Auto-config + @ConfigurationProperties metadata
+    // For @AutoConfiguration, @Conditional*, @ConfigurationProperties (compile time only).
+    compileOnly "org.springframework.boot:spring-boot-autoconfigure"
+    compileOnly "org.springframework.boot:spring-boot-configuration-processor"
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+
+    // Lombok
+    compileOnly "org.projectlombok:lombok"
+    annotationProcessor "org.projectlombok:lombok"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation "org.springframework.security:spring-security-test"
+    testImplementation "io.projectreactor:reactor-test"
 }

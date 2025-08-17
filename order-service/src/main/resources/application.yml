@@ -23,6 +23,18 @@ spring:
     user: ${DB_USER:user}
     password: ${DB_PASS:pass}
 
+  webflux:
+    base-path: /api
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Option A (recommended): use issuer + discovery
+          issuer-uri: http://localhost:8080/api
+          # Option B (direct JWKS): comment issuer-uri and uncomment next line
+          # jwk-set-uri: http://localhost:8080/api/.well-known/jwks.json
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     producer:
@@ -69,3 +81,20 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+outbox:
+  publisher:
+    batch-size: 200
+    poll-interval: 300ms
+    lease-duration: 20s
+    base-backoff: 5s
+    max-backoff: 2m
+    events-topic: order.events.v1
+
+security:
+  jwt:
+    # When running in Docker Compose, set SECURITY_ISSUER_URI=http://api-gateway:8080
+    issuer: http://localhost:8080/api
+    audience: order-service
+#    jwks-uri: ${JWT_JWKS_URI:http://localhost:8080/api/.well-known/jwks.json}
+

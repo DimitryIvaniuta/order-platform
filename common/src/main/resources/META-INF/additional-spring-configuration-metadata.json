@@ -1,0 +1,12 @@
+{
+  "properties": [
+    { "name": "security.claims.scope-claim", "type": "java.lang.String", "defaultValue": "scope" },
+    { "name": "security.claims.fallback-scp", "type": "java.lang.Boolean", "defaultValue": true },
+    { "name": "security.claims.scope-authority-prefix", "type": "java.lang.String", "defaultValue": "SCOPE_" },
+    { "name": "security.claims.tenant-claim", "type": "java.lang.String", "defaultValue": "mt" },
+    { "name": "security.claims.add-tenant-authority", "type": "java.lang.Boolean", "defaultValue": false },
+    { "name": "security.claims.tenant-authority-prefix", "type": "java.lang.String", "defaultValue": "TENANT_" },
+    { "name": "security.claims.permissions-claim", "type": "java.lang.String", "defaultValue": "perm" },
+    { "name": "security.claims.permission-authority-prefix", "type": "java.lang.String", "defaultValue": "PERM_" }
+  ]
+}

@@ -27,4 +27,11 @@ public class JwtProperties {
 
     /** How long to retain old keys to validate older tokens. */
     private Duration keyRetention = Duration.ofHours(48);
+
+    private String jwksUri;
+
+    public boolean hasJwks() {
+        return jwksUri != null && !jwksUri.isBlank();
+    }
+
 }

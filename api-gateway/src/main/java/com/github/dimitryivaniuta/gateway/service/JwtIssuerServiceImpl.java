@@ -11,10 +11,8 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -63,9 +61,14 @@ public class JwtIssuerServiceImpl implements JwtIssuerService {
             }
             var exp = now.plus(ttl);
 
+            List<String> aud = Arrays.stream(jwtProperties.getAudience().split("[,\\s]+"))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+
             var claims = new JWTClaimsSet.Builder()
                     .issuer(jwtProperties.getIssuer())
-                    .audience(jwtProperties.getAudience())      // supports String vararg
+                    .audience(aud)      // supports String vararg
                     .subject(subject)
                     .issueTime(Date.from(now))
                     .notBeforeTime(Date.from(now))

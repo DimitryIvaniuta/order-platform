@@ -8,8 +8,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ResourceServerJwtProperties {
 
     private String issuerUri;
+
     private String jwkSetUri;
-    public boolean hasIssuer() { return issuerUri != null && !issuerUri.isBlank(); }
-    public boolean hasJwks()   { return jwkSetUri != null   && !jwkSetUri.isBlank(); }
+
+    public boolean hasIssuer() {
+        return issuerUri != null && !issuerUri.isBlank();
+    }
+
+    public boolean hasJwks() {
+        return jwkSetUri != null && !jwkSetUri.isBlank();
+    }
 
 }

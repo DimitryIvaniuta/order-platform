@@ -6,9 +6,11 @@ spring:
     oauth2:
       resourceserver:
         jwt:
+          issuer-uri: http://localhost:8080/api
           # Boot will call /.well-known/openid-configuration on this issuer
-          issuer-uri: ${SECURITY_ISSUER_URI:http://localhost:8080}
-
+          # issuer-uri: ${SECURITY_ISSUER_URI:http://localhost:8080}
+          # Use JWKS directly (avoid discovery races). Keep only ONE of these.
+#          jwk-set-uri: ${JWT_JWKS_URI:http://localhost:8080/api/.well-known/jwks.json}
   r2dbc:
     url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT_GATEWAY:5437}/${DB_NAME_GATEWAY:gateway}
     username: ${DB_USER:user}
@@ -33,6 +35,18 @@ spring:
   webflux:
     base-path: /api
 
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: order-service
+              uri: http://localhost:8081   # <-- make sure this is your order-service port
+              predicates:
+                - Path=/orders/**
+              filters:
+                - PreserveHostHeader       # NO StripPrefix
+
 server:
   port: ${GATEWAY_PORT:8080}
 
@@ -40,8 +54,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,gateway
   endpoint:
+    gateway:
+      # choose one:
+      access: read-only     # GET/HEAD only (see routes etc.)
+      # access: unrestricted  # allows write ops like POST /actuator/gateway/refresh
     health:
       show-details: always
 
@@ -54,11 +72,12 @@ springdoc:
 security:
   jwt:
     # When running in Docker Compose, set SECURITY_ISSUER_URI=http://api-gateway:8080
-    issuer: ${SECURITY_ISSUER_URI:http://localhost:8080}
-    audience: order-platform-gateway
+    issuer: http://localhost:8080/api
+    audience: order-service
     access-token-ttl: PT10M
     key-rotation-interval: PT24H
     key-retention: PT48H
+    jwks-uri: ${JWT_JWKS_URI:http://localhost:8080/api/.well-known/jwks.json}
   authz:
     tenant-claim: mt
     keycloak-tenant-resource-prefix: "tenant:"
@@ -105,3 +124,8 @@ resilience4j:
     instances:
       orderSvc:
         baseConfig: default
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    reactor.netty.http.client: DEBUG

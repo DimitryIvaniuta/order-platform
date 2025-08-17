@@ -7,6 +7,7 @@ import com.github.dimitryivaniuta.gateway.model.UserEntity;
 import com.github.dimitryivaniuta.gateway.model.UserRepository;
 import com.github.dimitryivaniuta.gateway.model.UserRoleRepository;
 import com.github.dimitryivaniuta.gateway.model.UserStatus;
+import com.github.dimitryivaniuta.gateway.security.SystemRole;
 import com.github.dimitryivaniuta.gateway.service.AuthService;
 import com.github.dimitryivaniuta.gateway.service.JwtIssuerService;
 import com.github.dimitryivaniuta.gateway.dto.MintedToken;
@@ -61,6 +62,8 @@ public class AuthController {
 
     /** Issues signed RS256 JWTs (delegated signer). */
     private final JwtIssuerService tokenService;
+
+    private final UserRoleService userRoleService;
 
     private final AuthService authService;
 
@@ -130,18 +133,14 @@ public class AuthController {
      * Map ORDER_READ -> orders.read, ORDER_WRITE -> orders.write; ADMIN -> admin.
      */
     private List<String> deriveScopes(final List<String> roles) {
-        List<String> out = new ArrayList<>();
+        if (roles == null || roles.isEmpty()) return List.of("orders.read");
+
+        var out = new java.util.LinkedHashSet<String>(); // preserve order, dedupe
         for (String r : roles) {
-            String role = r == null ? "" : r.trim().toUpperCase(Locale.ROOT);
-            if (role.isEmpty()) continue;
-            switch (role) {
-                case "ORDER_READ"  -> out.add("orders.read");
-                case "ORDER_WRITE" -> out.add("orders.write");
-                case "ADMIN"       -> out.add("admin");
-                default            -> { /* ignore unknown roles for scopes; still present in mt */ }
-            }
+            SystemRole.from(r).ifPresent(enumRole -> out.addAll(enumRole.scopes()));
         }
-        return out.isEmpty() ? List.of("orders.read") : out;
+        if (out.isEmpty()) out.add("orders.read");
+        return List.copyOf(out);
     }
 
     private TokenResponse toResponse(final MintedToken token, final List<String> scopes) {

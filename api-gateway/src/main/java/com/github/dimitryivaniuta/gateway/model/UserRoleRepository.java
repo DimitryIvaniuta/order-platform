@@ -2,10 +2,13 @@ package com.github.dimitryivaniuta.gateway.model;
 
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.UUID;
 
 /**
  * Reactive repository for {@link UserRoleEntity}.
@@ -68,4 +71,16 @@ public interface UserRoleRepository extends ReactiveCrudRepository<UserRoleEntit
        WHERE LOWER(r.name) = LOWER(:roleName)
       """)
     Flux<Long> userIdsForRoleName(@Param("roleName") String roleName);
+
+
+    // simple, strongly-typed row projection
+    record RoleNameRow(@Column("name") String name) {}
+
+    @Query("""
+        SELECT r.name AS name
+        FROM roles r
+        JOIN user_roles ur ON ur.role_id = r.id
+        WHERE ur.user_id = :userId
+    """)
+    Flux<RoleNameRow> findRoleNamesByUserId(@Param("userId") Long userId);
 }

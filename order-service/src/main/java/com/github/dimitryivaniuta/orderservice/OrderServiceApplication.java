@@ -1,4 +1,4 @@
-package com.github.dimitryivaniuta.order;
+package com.github.dimitryivaniuta.orderservice;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;

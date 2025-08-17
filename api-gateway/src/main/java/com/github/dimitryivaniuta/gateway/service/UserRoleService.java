@@ -1,8 +1,6 @@
 package com.github.dimitryivaniuta.gateway.service;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 import com.github.dimitryivaniuta.gateway.model.RoleEntity;
 import com.github.dimitryivaniuta.gateway.model.RoleRepository;
@@ -66,4 +64,11 @@ public class UserRoleService {
                 )
                 .doOnSuccess(v -> log.info("Updated roles for user={} requested={}", userId, requested));
     }
+
+/*    public Mono<List<String>> loadRoleNames(UUID userId) {
+        return userRoleRepository.findRoleNamesByUserId(userId)
+                .map(UserRoleRepository.RoleNameView::getName)
+                .collectList();
+    }*/
+
 }

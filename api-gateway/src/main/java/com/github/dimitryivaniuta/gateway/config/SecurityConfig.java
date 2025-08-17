@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.github.dimitryivaniuta.common.security.RequiredAudienceValidator;
 import com.github.dimitryivaniuta.gateway.security.JwtProperties;
 import com.github.dimitryivaniuta.gateway.security.ResourceServerJwtProperties;
 import lombok.RequiredArgsConstructor;
@@ -45,44 +46,43 @@ public class SecurityConfig {
     /** Issuer and optional jwk-set-uri for resource-server validation. */
     private final ResourceServerJwtProperties resourceProps;
 
-    /** Reactive converter wrapping JwtAuthenticationConverter with custom authorities logic. */
-    private final Converter<Jwt, Mono<AbstractAuthenticationToken>> reactiveJwtAuthConverter;
+    // Provided by :common auto-config as a reactive converter (Jwt -> Mono<AbstractAuthenticationToken>)
+    private final Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthConverter;
 
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(final ServerHttpSecurity http) {
-        http
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http,
+                                                            ReactiveJwtDecoder decoder) {
+        return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource()))
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
                 .logout(ServerHttpSecurity.LogoutSpec::disable)
                 .authorizeExchange(ex -> ex
-                        .pathMatchers(
-                                "/actuator/**",
-                                "/.well-known/**",
-                                "/v3/api-docs/**",
-                                "/swagger-ui.html",
-                                "/swagger-ui/**",
-                                "/auth/login"
-                        ).permitAll()
-                        .pathMatchers(HttpMethod.GET, "/t/{tenant}/orders/**")
-                        .access(TenantPermissionAuthorizationManager.requires("ORDER_READ"))
-                        .pathMatchers(HttpMethod.POST, "/t/{tenant}/orders/**")
-                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
-                        .pathMatchers(HttpMethod.PUT, "/t/{tenant}/orders/**")
-                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
-                        .pathMatchers(HttpMethod.DELETE, "/t/{tenant}/orders/**")
-                        .access(TenantPermissionAuthorizationManager.requires("ORDER_WRITE"))
-                        .anyExchange().authenticated()
+                                .pathMatchers(
+                                        "/actuator/**",
+                                        "/.well-known/**",
+//                                "/api/.well-known/**",
+                                        "/v3/api-docs/**",
+                                        "/swagger-ui.html",
+                                        "/swagger-ui/**",
+                                        "/auth/login"
+                                ).permitAll()
+                                .pathMatchers(HttpMethod.POST, "/orders/**").authenticated()
+                                .pathMatchers(HttpMethod.GET,  "/orders/**").authenticated()
+                                .pathMatchers(HttpMethod.PUT,  "/orders/**").authenticated()
+                                .pathMatchers(HttpMethod.DELETE, "/orders/**").authenticated()
+
+                                // everything else requires auth
+                                .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt
-                                .jwtDecoder(reactiveJwtDecoder())
-                                .jwtAuthenticationConverter(reactiveJwtAuthConverter)
+                                .jwtDecoder(decoder)
+                                .jwtAuthenticationConverter(jwtAuthConverter)
                         )
-                );
-
-        return http.build();
+                )
+                .build();
     }
 
     /**
@@ -93,19 +93,19 @@ public class SecurityConfig {
      */
     @Bean
     public ReactiveJwtDecoder reactiveJwtDecoder() {
+        // Choose JWKS if provided, otherwise OIDC discovery via issuer
         final NimbusReactiveJwtDecoder decoder =
                 resourceProps.hasJwks()
                         ? NimbusReactiveJwtDecoder.withJwkSetUri(resourceProps.getJwkSetUri()).build()
                         : NimbusReactiveJwtDecoder.withIssuerLocation(resourceProps.getIssuerUri()).build();
 
-        JwtTimestampValidator ts = new JwtTimestampValidator(Duration.ofMinutes(2));
+        // validators
+        var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();
+        validators.add(new JwtTimestampValidator(Duration.ofMinutes(2)));
 
-        List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
-        validators.add(ts);
-
-        List<String> allowedAudiences = parseAudiences(jwtProperties.getAudience());
+        var allowedAudiences = parseAudiences(jwtProperties.getAudience());
         if (!allowedAudiences.isEmpty()) {
-            validators.add(new RequiredAudienceValidator(allowedAudiences));
+            validators.add(new RequiredAudienceValidator(allowedAudiences)); // from :common
         }
 
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
@@ -114,7 +114,7 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration cfg = new CorsConfiguration();
+        var cfg = new CorsConfiguration();
         cfg.setAllowedOrigins(List.of("*"));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
@@ -122,7 +122,7 @@ public class SecurityConfig {
         cfg.setAllowCredentials(false);
         cfg.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);
         return source;
     }
@@ -131,10 +131,8 @@ public class SecurityConfig {
      * Parses a comma-separated audience string into a list.
      * Accepts single value or "aud1,aud2,aud3".
      */
-    private static List<String> parseAudiences(final String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
+    private static List<String> parseAudiences(String value) {
+        if (value == null || value.isBlank()) return List.of();
         return Arrays.stream(value.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())

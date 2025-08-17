@@ -1,0 +1,54 @@
+{
+  "id": "b6b5f39e-f12c-4e83-904c-68cdab6f4525",
+  "name": "Order Platform \u2014 Local Dev (v2)",
+  "values": [
+    {
+      "key": "base_url_gateway",
+      "value": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "key": "usernameOrEmail",
+      "value": "user@example.com",
+      "enabled": true
+    },
+    {
+      "key": "password",
+      "value": "userpass",
+      "enabled": true
+    },
+    {
+      "key": "tenantId",
+      "value": "123",
+      "enabled": true
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "correlation_id",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "token_type",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "expires_in",
+      "value": "",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2025-08-14T20:22:31Z",
+  "_postman_exported_using": "ChatGPT generator"
+}

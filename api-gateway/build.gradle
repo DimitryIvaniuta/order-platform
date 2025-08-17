@@ -24,8 +24,8 @@ dependencies {
 
     // Security: validate JWTs (managed by Boot BOM)
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-    implementation 'org.springframework.security:spring-security-oauth2-jose:6.5.2'
-    implementation 'com.nimbusds:nimbus-jose-jwt:10.4.1'
+//    implementation 'org.springframework.security:spring-security-oauth2-jose:6.5.2'
+//    implementation 'com.nimbusds:nimbus-jose-jwt:10.4.1'
 
     // Observability & validation
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
