@@ -15,11 +15,13 @@ public class OrderService {
     private final OrderRepository repo;
     private final OrderCommandProducer producer;
     private final SecurityTenantResolver security; // defined below
+    private final OrderItemService itemService;
 
-    public OrderService(OrderRepository repo, OrderCommandProducer producer, SecurityTenantResolver security) {
+    public OrderService(OrderRepository repo, OrderCommandProducer producer, SecurityTenantResolver security, OrderItemService itemService) {
         this.repo = repo;
         this.producer = producer;
         this.security = security;
+        this.itemService = itemService;
     }
 
     public Mono<OrderResponse> createOrder(CreateOrderRequest req) {
@@ -42,9 +44,14 @@ public class OrderService {
 
     public Mono<OrderResponse> getById(Long id) {
         return security.current()
-                .flatMap(ctx -> repo.findByIdAndTenantId(id, ctx.tenantId()))
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Order not found")))
-                .map(OrderResponse::fromEntity);
+                .flatMap(ctx ->
+                        repo.findByIdAndTenantId(id, ctx.tenantId())
+                                .switchIfEmpty(Mono.error(new IllegalArgumentException("Order not found")))
+                                .map(OrderResponse::fromEntity)
+                                .flatMap(resp -> itemService.list(ctx.tenantId(), id)
+                                        .collectList()
+                                        .map(resp::withItems))
+                );
     }
 
     public Mono<OrderResponse> markPaid(Long id) {

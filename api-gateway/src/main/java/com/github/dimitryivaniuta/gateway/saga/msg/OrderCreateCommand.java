@@ -2,10 +2,9 @@ package com.github.dimitryivaniuta.gateway.saga.msg;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
-import com.github.dimitryivaniuta.gateway.dto.OrderLine;
+import com.github.dimitryivaniuta.gateway.web.dto.OrderLine;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;

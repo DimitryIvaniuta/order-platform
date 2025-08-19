@@ -1,6 +1,7 @@
 package com.github.dimitryivaniuta.orderservice.web;
 
 import com.github.dimitryivaniuta.orderservice.service.OrderService;
+import com.github.dimitryivaniuta.orderservice.service.SecurityTenantResolver;
 import com.github.dimitryivaniuta.orderservice.web.dto.CreateOrderRequest;
 import com.github.dimitryivaniuta.orderservice.web.dto.OrderResponse;
 import jakarta.validation.Valid;
@@ -28,4 +29,5 @@ public class OrderController {
     public Mono<OrderResponse> get(@PathVariable long id) {
         return service.getById(id);
     }
+
 }

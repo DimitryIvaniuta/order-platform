@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import com.github.dimitryivaniuta.gateway.dto.OrderLine;
+import com.github.dimitryivaniuta.gateway.web.dto.OrderLine;
 import com.github.dimitryivaniuta.gateway.saga.msg.OrderCreateCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

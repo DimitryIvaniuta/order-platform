@@ -1,4 +1,4 @@
-package com.github.dimitryivaniuta.gateway.dto;
+package com.github.dimitryivaniuta.gateway.web.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;

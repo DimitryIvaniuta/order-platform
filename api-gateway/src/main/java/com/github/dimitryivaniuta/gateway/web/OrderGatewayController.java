@@ -1,6 +1,6 @@
 package com.github.dimitryivaniuta.gateway.web;
 
-import com.github.dimitryivaniuta.gateway.dto.CreateOrderRequest;
+import com.github.dimitryivaniuta.gateway.web.dto.CreateOrderRequest;
 import com.github.dimitryivaniuta.gateway.saga.OrderSagaGatewayFacade;
 import com.github.dimitryivaniuta.gateway.saga.SagaEventBus;
 import com.github.dimitryivaniuta.gateway.saga.SagaStatusEntity;

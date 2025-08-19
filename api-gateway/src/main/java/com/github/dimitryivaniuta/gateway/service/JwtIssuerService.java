@@ -1,7 +1,7 @@
 package com.github.dimitryivaniuta.gateway.service;
 
 
-import com.github.dimitryivaniuta.gateway.dto.MintedToken;
+import com.github.dimitryivaniuta.gateway.web.dto.MintedToken;
 import reactor.core.publisher.Mono;
 
 import java.util.List;

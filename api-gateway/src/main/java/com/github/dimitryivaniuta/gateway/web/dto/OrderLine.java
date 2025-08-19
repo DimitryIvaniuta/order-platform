@@ -1,4 +1,4 @@
-package com.github.dimitryivaniuta.gateway.dto;
+package com.github.dimitryivaniuta.gateway.web.dto;
 
 import java.math.BigDecimal;
 import java.util.Objects;
