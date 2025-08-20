@@ -56,7 +56,6 @@ management:
 logging:
   file:
     name: logs/${spring.application.name}.log
-
   # NEW: Logback rolling‑policy settings
   logback:
     rollingpolicy:
@@ -71,6 +70,9 @@ logging:
   level:
     root: INFO
     com.github.dimitryivaniuta: DEBUG
+    io.r2dbc.postgresql: DEBUG
+    org.springframework.r2dbc.core: DEBUG
+    com.github.dimitryivaniuta.orderservice.outbox.OutboxPublisher: DEBUG
 
   pattern:
     console: "[%d{yyyy‑MM‑dd HH:mm:ss.SSS}] [%thread] %-5level %logger{36} ‑ %msg%n"
@@ -85,7 +87,7 @@ springdoc:
 outbox:
   publisher:
     batch-size: 200
-    poll-interval: 300ms
+    poll-interval: PT5S
     lease-duration: 20s
     base-backoff: 5s
     max-backoff: 2m

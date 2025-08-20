@@ -6,10 +6,13 @@ import com.github.dimitryivaniuta.orderservice.model.OrderStatus;
 import com.github.dimitryivaniuta.orderservice.web.dto.CreateOrderRequest;
 import com.github.dimitryivaniuta.orderservice.web.dto.OrderResponse;
 import java.util.UUID;
+
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 @Service
+@Slf4j
 public class OrderService {
 
     private final OrderRepository repo;
@@ -39,7 +42,8 @@ public class OrderService {
                                     ).thenReturn(saved)
                             );
                 })
-                .map(OrderResponse::fromEntity);
+                .map(OrderResponse::fromEntity)
+                .doOnError(e -> log.error("Create order failed", e));
     }
 
     public Mono<OrderResponse> getById(Long id) {

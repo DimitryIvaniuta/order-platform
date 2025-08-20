@@ -51,11 +51,11 @@ public interface OutboxStore {
 
     Flux<OutboxRow> claimBatch(String tenantId, int batchSize, Duration leaseDuration, Instant now);
 
-    Mono<Long> rescheduleForRetry(OutboxKey key, Instant nextTry);
-    Mono<Long> rescheduleForRetry(Collection<OutboxKey> keys, Instant nextTry);
+//    Mono<Integer> rescheduleForRetry(OutboxKey key, Instant nextTry);
+    Mono<Integer> rescheduleForRetry(Collection<OutboxKey> keys, Instant nextTry);
 
-    Mono<Long> releaseExpiredLeases(String tenantId, Instant now);
+//    Mono<Long> releaseExpiredLeases(String tenantId, Instant now);
 
-    Mono<Long> deleteByKey(OutboxKey key);
-    Mono<Long> deleteByKeys(Collection<OutboxKey> keys);
+//    Mono<Integer> deleteByKey(OutboxKey key);
+    Mono<Integer> deleteByKeys(Collection<OutboxKey> keys);
 }

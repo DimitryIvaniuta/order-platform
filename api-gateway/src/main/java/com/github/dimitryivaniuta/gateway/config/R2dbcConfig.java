@@ -2,6 +2,8 @@ package com.github.dimitryivaniuta.gateway.config;
 
 import com.github.dimitryivaniuta.gateway.model.converter.UserStatusReadingConverter;
 import com.github.dimitryivaniuta.gateway.model.converter.UserStatusWritingConverter;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.r2dbc.convert.R2dbcCustomConversions;
 
@@ -14,6 +16,7 @@ import java.util.List;
 
 @Configuration
 @EnableR2dbcAuditing
+@Slf4j
 public class R2dbcConfig {
 
     @Bean
