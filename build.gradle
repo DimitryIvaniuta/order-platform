@@ -31,7 +31,6 @@ subprojects {
         imports {
             mavenBom "org.springframework.boot:spring-boot-dependencies:3.5.3"
             mavenBom "org.springframework.cloud:spring-cloud-dependencies:2025.0.0"
-            mavenBom "io.r2dbc:r2dbc-bom:Arabba-SR2"
             mavenBom "org.springdoc:springdoc-openapi-bom:2.8.9"
         }
         dependencies {
@@ -46,7 +45,7 @@ subprojects {
         annotationProcessor 'org.projectlombok:lombok:1.18.38'
 
         // spring-dotenv for reading .env files
-        implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+//        implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 
         testCompileOnly 'org.projectlombok:lombok:1.18.38'
         testAnnotationProcessor 'org.projectlombok:lombok:1.18.38'
