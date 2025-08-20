@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import com.github.dimitryivaniuta.gateway.kafka.GatewayKafkaProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.common.header.Header;
 import org.reactivestreams.Subscription;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -89,35 +92,83 @@ public class SagaEventConsumer {
     }
 
     /**
+     * Robust handler:
+     * - skips tombstones (null/empty value)
+     * - reads type/ids from multiple locations (payload OR headers)
+     * - logs & ack on unknown shapes instead of throwing
      * Processes a single Kafka record: parse -> map -> upsert -> SSE -> ack.
      * Uses Mono.fromCallable to handle checked exceptions from Jackson.
      */
     private Mono<Void> handleRecord(final ReceiverRecord<String, byte[]> rr) {
         final byte[] value = rr.value();
-        final String topic = rr.topic();
+
+        // Tombstone or empty payload (compacted topics, etc.)
+        if (value == null || value.length == 0) {
+            if (log.isDebugEnabled()) {
+                log.debug("Skipping tombstone: topic={} partition={} offset={}",
+                        rr.topic(), rr.partition(), rr.offset());
+            }
+            rr.receiverOffset().acknowledge();
+            return Mono.empty();
+        }
 
         return Mono.fromCallable(() -> objectMapper.readTree(value))
                 .flatMap(json -> {
-                    UUID sagaId = UUID.fromString(requiredText(json, "sagaId"));
-                    String type = requiredText(json, "type");
-                    String reason = optionalText(json, "reason");
+                    // --- tolerate different field names / nesting / headers ---
+                    String type = coalesce(
+                            text(json, "type"),
+                            text(json, "eventType"),
+                            text(json.at("/payload/type")),
+                            header(rr, "event-type"),
+                            header(rr, "X-Event-Type")
+                    );
 
-                    String tenant = optionalText(json, "tenantId");
-                    if (tenant == null) {
-                        tenant = header(rr, "tenant-id");
-                    }
-                    String user = optionalText(json, "userId");
-                    if (user == null) {
-                        user = header(rr, "user-id");
+                    if (StringUtils.isBlank(type)) {
+                        log.warn("Skipping event w/o type: topic={} key={} headers={} payload={}",
+                                rr.topic(), rr.key(), headersToMap(rr), safeUtf8(value));
+                        return Mono.empty(); // ACK + move on
                     }
 
+                    String tenant = coalesce(
+                            text(json, "tenantId"),
+                            text(json, "tenant_id"),
+                            header(rr, "tenant-id"),
+                            header(rr, "X-Tenant-Id")
+                    );
+                    if (StringUtils.isBlank(tenant)) {
+                        tenant = "unknown";
+                    }
+
+                    String user = coalesce(
+                            text(json, "userId"),
+                            text(json, "user_id"),
+                            header(rr, "user-id"),
+                            header(rr, "X-User-Id")
+                    );
+                    if (StringUtils.isBlank(user)) {
+                        user = "unknown";
+                    }
+
+                    UUID sagaId = parseUuid(coalesce(
+                            text(json, "sagaId"),
+                            text(json, "correlationId"),
+                            header(rr, "correlation-id"),
+                            header(rr, "X-Correlation-Id")
+                    ));
+                    if (sagaId == null) {
+                        log.warn("Skipping event w/o sagaId: topic={} key={} type={} headers={} payload={}",
+                                rr.topic(), rr.key(), type, headersToMap(rr), safeUtf8(value));
+                        return Mono.empty();
+                    }
+
+                    String reason = coalesce(text(json, "reason"), text(json.at("/payload/reason")));
                     String state = mapEventToState(type);
 
                     var entity = SagaStatusEntity.builder()
                             .id(sagaId)
-                            .tenantId(tenant != null ? tenant : "unknown")
-                            .userId(user != null ? user : "unknown")
-                            .type("ORDER_CREATE")
+                            .tenantId(tenant)
+                            .userId(user)
+                            .type("ORDER_CREATE")   // optional: alter if you differentiate saga types
                             .state(state)
                             .reason(reason)
                             .createdAt(OffsetDateTime.now())
@@ -125,34 +176,40 @@ public class SagaEventConsumer {
                             .build();
 
                     final String upsert = """
-                            INSERT INTO saga_status (id, tenant_id, user_id, type, state, reason, created_at, updated_at)
-                            VALUES (:id, :tenantId, :userId, :type, :state, :reason, now(), now())
-                            ON CONFLICT (id) DO UPDATE
-                              SET state = EXCLUDED.state,
-                                  reason = EXCLUDED.reason,
-                                  updated_at = now()
-                            """;
+                        INSERT INTO saga_status (id, tenant_id, user_id, type, state, reason, created_at, updated_at)
+                        VALUES (:id, :tenantId, :userId, :type, :state, :reason, now(), now())
+                        ON CONFLICT (id) DO UPDATE
+                          SET state = EXCLUDED.state,
+                              reason = EXCLUDED.reason,
+                              updated_at = now()
+                        """;
 
-                    return template.getDatabaseClient()
+                    var spec = template.getDatabaseClient()
                             .sql(upsert)
                             .bind("id", entity.getId())
                             .bind("tenantId", entity.getTenantId())
                             .bind("userId", entity.getUserId())
                             .bind("type", entity.getType())
-                            .bind("state", entity.getState())
-                            .bind("reason", entity.getReason())
-                            .then()
+                            .bind("state", entity.getState());
+                    if (entity.getReason() == null) {
+                        spec = spec.bindNull("reason", String.class);
+                    } else {
+                        spec = spec.bind("reason", entity.getReason());
+                    }
+
+                    return  spec.then()
                             .doOnSuccess(v -> {
                                 bus.publish(entity);
                                 if (log.isDebugEnabled()) {
                                     log.debug("Upserted saga status sagaId={} state={} topic={} partition={} offset={}",
-                                            sagaId, state, topic, rr.receiverOffset().topicPartition(), rr.receiverOffset().offset());
+                                            sagaId, state, rr.topic(), rr.partition(), rr.offset());
                                 }
                             });
                 })
                 .onErrorResume(ex -> {
-                    log.error("Failed to handle event: topic={} partition={} offset={}",
-                            rr.topic(), rr.partition(), rr.offset(), ex);
+                    log.error("Failed to handle event: topic={} partition={} offset={} key={} headers={} payload={}",
+                            rr.topic(), rr.partition(), rr.offset(), rr.key(), headersToMap(rr), safeUtf8(value), ex);
+                    // swallow to keep the stream alive
                     return Mono.empty();
                 })
                 .doFinally(sig -> rr.receiverOffset().acknowledge());
@@ -189,15 +246,56 @@ public class SagaEventConsumer {
      * Maps event type to a high-level saga state.
      */
     private String mapEventToState(final String type) {
-        return switch (type) {
+        // tolerate a wide range of event names
+        String t = type.toUpperCase();
+        return switch (t) {
             case "ORDER_CREATED" -> "STARTED";
-            case "INVENTORY_RESERVED" -> "RESERVED";
-            case "PAYMENT_AUTHORIZED", "PAYMENT_CAPTURED" -> "PAID";
+            case "INVENTORY_RESERVED", "RESERVATION_OK" -> "RESERVED";
+            case "PAYMENT_AUTHORIZED", "PAYMENT_CAPTURED", "PAYMENT_OK" -> "PAID";
             case "SHIPMENT_DISPATCHED", "ORDER_SHIPPED" -> "SHIPPED";
             case "ORDER_COMPLETED" -> "COMPLETED";
-            case "ORDER_FAILED", "COMPENSATED", "CANCELLED" -> "FAILED";
+            case "ORDER_FAILED", "COMPENSATED", "CANCELLED", "ORDER_CANCELLED", "PAYMENT_FAILED", "RESERVATION_FAILED" -> "FAILED";
             default -> "STARTED";
         };
     }
+
+    private static String coalesce(String... vals) {
+        for (String v : vals) {
+            if (StringUtils.isNotBlank(v)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private static String text(JsonNode n, String field) {
+        if (n == null) return null;
+        JsonNode v = n.get(field);
+        return (v == null || v.isNull()) ? null : v.asText();
+    }
+
+    private static String text(JsonNode n) { // for pointer results
+        return (n == null || n.isMissingNode() || n.isNull()) ? null : n.asText();
+    }
+
+    private static UUID parseUuid(String s) {
+        try { return StringUtils.isBlank(s) ? null : UUID.fromString(s); }
+        catch (Exception ignore) { return null; }
+    }
+
+
+
+    private static Map<String, String> headersToMap(ReceiverRecord<String, byte[]> rr) {
+        Map<String, String> m = new HashMap<>();
+        rr.headers().forEach(h -> m.put(h.key(), new String(h.value(), StandardCharsets.UTF_8)));
+        return m;
+    }
+
+    private static String safeUtf8(byte[] bytes) {
+        try { return new String(bytes, StandardCharsets.UTF_8); }
+        catch (Exception e) { return "<binary>"; }
+    }
+
+
 }
 
