@@ -84,6 +84,18 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  client-id: ${spring.application.name}
+  group-id: ${spring.application.name}-consumer
+  topics:
+    commands:
+      orderCreate: order.command.create.v1
+    events:
+      order:     order.events.v1
+      payment:   payment.events.v1
+      inventory: inventory.events.v1
+
 outbox:
   publisher:
     batch-size: 200
@@ -91,7 +103,7 @@ outbox:
     lease-duration: 20s
     base-backoff: 5s
     max-backoff: 2m
-    events-topic: order.events.v1
+    events-topic: ${kafka.topics.events.order}
 
 security:
   jwt:

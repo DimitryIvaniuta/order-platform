@@ -135,9 +135,7 @@ public class SagaEventConsumer {
                             header(rr, "tenant-id"),
                             header(rr, "X-Tenant-Id")
                     );
-                    if (StringUtils.isBlank(tenant)) {
-                        tenant = "unknown";
-                    }
+                    tenant = normalizeTenant(tenant);
 
                     String user = coalesce(
                             text(json, "userId"),
@@ -215,6 +213,27 @@ public class SagaEventConsumer {
                 .doFinally(sig -> rr.receiverOffset().acknowledge());
     }
 
+    private static String normalizeTenant(String s) {
+        if (StringUtils.isBlank(s)) return "unknown";
+        // Handles "{123=[ADMIN, ORDER_READ]}" -> "123"
+        if (s.startsWith("{") && s.contains("=")) {
+            int b1 = s.indexOf('{');
+            int eq = s.indexOf('=');
+            if (eq > b1 + 1) return s.substring(b1 + 1, eq).trim();
+        }
+        // Handles JSON object like {"123":[...]} → "123"
+        if (s.startsWith("{") && s.endsWith("}") && s.contains(":")) {
+            String inner = s.substring(1, s.length() - 1).trim();
+            int colon = inner.indexOf(':');
+            if (colon > 1) {
+                String key = inner.substring(0, colon).trim();
+                if (key.startsWith("\"") && key.endsWith("\"")) key = key.substring(1, key.length() - 1);
+                return key;
+            }
+        }
+        return s;
+    }
+
     /**
      * Required string field reader that throws if missing or blank.
      */
@@ -249,7 +268,9 @@ public class SagaEventConsumer {
         // tolerate a wide range of event names
         String t = type.toUpperCase();
         return switch (t) {
-            case "ORDER_CREATED" -> "STARTED";
+            case "ORDER_CREATE", "ORDER_CREATED" -> "STARTED";
+            case "CART_ITEM_ADDED", "CART_ITEM_UPDATED", "CART_ITEM_REMOVED",
+                 "DISCOUNT_APPLIED", "SHIPPING_QUOTED" -> "PRICED";
             case "INVENTORY_RESERVED", "RESERVATION_OK" -> "RESERVED";
             case "PAYMENT_AUTHORIZED", "PAYMENT_CAPTURED", "PAYMENT_OK" -> "PAID";
             case "SHIPMENT_DISPATCHED", "ORDER_SHIPPED" -> "SHIPPED";

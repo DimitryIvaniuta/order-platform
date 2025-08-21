@@ -11,14 +11,16 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.*;
 import reactor.core.publisher.Mono;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 
-/** Auto-configures the reactive Jwt auth converter from our MultiTenantAuthoritiesConverter. */
+/** Autoconfigures the reactive Jwt auth converter from our MultiTenantAuthoritiesConverter. */
 @AutoConfiguration
 @EnableConfigurationProperties({
         MultiTenantAuthzProperties.class,
         SecurityClaimsProperties.class
 })
-@ConditionalOnClass(JwtAuthenticationConverter.class)
+@ConditionalOnClass({ JwtAuthenticationConverter.class, ReactiveJwtAuthenticationConverterAdapter.class })
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
 public class SecurityCommonAutoConfiguration {
 
     @Bean

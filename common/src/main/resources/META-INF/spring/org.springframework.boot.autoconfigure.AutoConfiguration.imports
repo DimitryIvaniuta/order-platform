@@ -1,1 +1,2 @@
 com.github.dimitryivaniuta.common.security.SecurityCommonAutoConfiguration
+com.github.dimitryivaniuta.common.kafka.CommonKafkaAutoConfiguration

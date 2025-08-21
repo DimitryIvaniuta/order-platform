@@ -89,16 +89,15 @@ security:
 
 kafka:
   bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
-  client-id: api-gateway
-  group-id: api-gateway-consumer
-  acks: all
-  compression-type: lz4
-  command-topic:
-    order-create: order.command.create.v1
-  event-topics:
-    - order.events.v1
-    - payment.events.v1
-    - inventory.events.v1
+  client-id: ${spring.application.name}
+  group-id: ${spring.application.name}-consumer
+  topics:
+    commands:
+      orderCreate: order.command.create.v1
+    events:
+      order:     order.events.v1
+      payment:   payment.events.v1
+      inventory: inventory.events.v1
 
 resilience4j:
   circuitbreaker:

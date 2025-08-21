@@ -17,4 +17,8 @@ public interface OrderItemRepository extends ReactiveCrudRepository<OrderItemEnt
         WHERE order_id = :orderId AND tenant_id = :tenantId
     """)
     Mono<java.math.BigDecimal> sumTotals(Long orderId, String tenantId);
+
+    Flux<OrderItemEntity> findByTenantIdAndOrderId(String tenantId, Long orderId);
+
+    Mono<OrderItemEntity> findByIdAndTenantId(Long id, String tenantId);
 }
