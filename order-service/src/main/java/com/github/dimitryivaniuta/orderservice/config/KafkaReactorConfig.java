@@ -1,6 +1,6 @@
 package com.github.dimitryivaniuta.orderservice.config;
 
-import com.github.dimitryivaniuta.common.kafka.KafkaProperties;
+import com.github.dimitryivaniuta.common.kafka.AppKafkaProperties;
 import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -21,7 +21,7 @@ import java.util.Map;
 public class KafkaReactorConfig {
 
     private final KafkaClientProperties clientProps;
-    private final KafkaProperties topics;
+    private final AppKafkaProperties topics;
 
     @Bean
     KafkaSender<String, byte[]> kafkaSender() {

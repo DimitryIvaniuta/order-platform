@@ -9,8 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  */
 @AutoConfiguration
 @EnableConfigurationProperties({
-        KafkaClientProperties.class,
-        KafkaProperties.class
+        AppKafkaProperties.class
 })
 public class CommonKafkaAutoConfiguration {
 }

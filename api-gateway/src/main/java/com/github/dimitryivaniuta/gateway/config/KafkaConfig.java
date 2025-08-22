@@ -1,8 +1,10 @@
-package com.github.dimitryivaniuta.gateway.kafka;
+package com.github.dimitryivaniuta.gateway.config;
 
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+
+import com.github.dimitryivaniuta.common.kafka.AppKafkaProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -36,7 +38,7 @@ import reactor.kafka.sender.SenderOptions;
 public class KafkaConfig {
 
     /** Typed Kafka properties (alphabetically ordered private fields). */
-    private final GatewayKafkaProperties props;
+    private final AppKafkaProperties props;
 
     /**
      * Producer options (string key, byte[] value) with compression and strong durability (acks=all).
@@ -46,8 +48,8 @@ public class KafkaConfig {
         Map<String, Object> cfg = new HashMap<>();
         cfg.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, props.getBootstrapServers());
         cfg.put(ProducerConfig.CLIENT_ID_CONFIG, props.getClientId());
-        cfg.put(ProducerConfig.ACKS_CONFIG, props.getAcks());
-        cfg.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, props.getCompressionType());
+        cfg.put(ProducerConfig.ACKS_CONFIG, props.getProducer().getAcks());
+        cfg.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, props.getProducer().getCompressionType());
         cfg.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         cfg.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
 
@@ -91,11 +93,11 @@ public class KafkaConfig {
     @Bean
     public KafkaReceiver<String, byte[]> kafkaReceiver(final ReceiverOptions<String, byte[]> base) {
         ReceiverOptions<String, byte[]> ro =
-                (props.getEventTopics() == null || props.getEventTopics().isEmpty())
+                (props.allEventTopics() == null || props.allEventTopics().isEmpty())
                         ? base
-                        : base.subscription(props.getEventTopics());
+                        : base.subscription(props.allEventTopics());
 
-        log.info("KafkaReceiver initialized groupId={} topics={}", props.getGroupId(), props.getEventTopics());
+        log.info("KafkaReceiver initialized groupId={} topics={}", props.getGroupId(), props.allEventTopics());
         return KafkaReceiver.create(ro);
     }
 }

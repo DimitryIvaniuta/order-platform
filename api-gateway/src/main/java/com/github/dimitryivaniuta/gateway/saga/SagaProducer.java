@@ -1,14 +1,11 @@
 package com.github.dimitryivaniuta.gateway.saga;
 
-//import com.example.gateway.kafka.GatewayKafkaProperties;
-//import com.example.gateway.saga.msg.OrderCreateCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
-import com.github.dimitryivaniuta.gateway.kafka.GatewayKafkaProperties;
+import com.github.dimitryivaniuta.common.kafka.AppKafkaProperties;
 import com.github.dimitryivaniuta.gateway.saga.msg.OrderCreateCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +33,7 @@ import reactor.kafka.sender.SenderRecord;
  * <ul>
  *   <li>The {@code sagaId} is the global correlation key (UUID, ideally UUIDv7) and is used as the Kafka key.</li>
  *   <li>Sender is created lazily from injected {@link SenderOptions} and cached for reuse.</li>
- *   <li>No {@code @Value}; all configuration is bound via {@link GatewayKafkaProperties}.</li>
+ *   <li>No {@code @Value}; all configuration is bound via {@link AppKafkaProperties}.</li>
  * </ul>
  */
 @Slf4j
@@ -48,7 +45,7 @@ public class SagaProducer {
     private final ObjectMapper objectMapper;
 
     /** Typed Kafka properties (bootstrap servers, topics, client/group ids, etc.). */
-    private final GatewayKafkaProperties props;
+    private final AppKafkaProperties props;
 
     /** Cached Reactor Kafka sender instance (created from {@link #senderOptions}). */
     private volatile KafkaSender<String, byte[]> sender;
@@ -78,7 +75,7 @@ public class SagaProducer {
 
         return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(cmd))
                 .flatMap(bytes -> {
-                    final String topic = props.getCommandTopic().getOrderCreate();
+                    final String topic = props.getTopics().getCommands().getOrderCreate();
                     final String key = cmd.sagaId().toString();
                     final ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, key, bytes);
 

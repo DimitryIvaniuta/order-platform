@@ -28,3 +28,28 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  client-id: ${spring.application.name}
+  group-id: ${spring.application.name}-consumer
+  topics:
+    commands:
+      orderCreate: order.command.create.v1
+    events:
+      order:     order.events.v1
+      payment:   payment.events.v1
+      inventory: inventory.events.v1
+  producer:
+    acks: all
+    compression-type: lz4
+    linger-ms: 5
+    batch-size: 32768
+    delivery-timeout-ms: 120000
+
+  consumer:
+    enable-auto-commit: false
+    auto-offset-reset: earliest
+    max-poll-records: 500
+    fetch-max-wait-ms: 250
+    commit-interval: 2s

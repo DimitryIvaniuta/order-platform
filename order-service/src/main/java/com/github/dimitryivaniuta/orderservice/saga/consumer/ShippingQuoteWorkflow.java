@@ -1,7 +1,7 @@
 package com.github.dimitryivaniuta.orderservice.saga.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.dimitryivaniuta.common.kafka.KafkaProperties;
+import com.github.dimitryivaniuta.common.kafka.AppKafkaProperties;
 import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -21,7 +21,7 @@ class ShippingQuoteWorkflow {
     private final KafkaSender<String, byte[]> sender;
     private final ObjectMapper om;
 //    @Value("${saga.topics.events:order.events.v1}") String eventsTopic;
-private final KafkaProperties topics;
+private final AppKafkaProperties topics;
 
     @EventListener(ApplicationReadyEvent.class)
     public void start() {

@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import com.github.dimitryivaniuta.gateway.kafka.GatewayKafkaProperties;
+import com.github.dimitryivaniuta.common.kafka.AppKafkaProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -49,7 +49,7 @@ public class SagaEventConsumer {
     /**
      * Typed Kafka properties (topics, group id, etc.).
      */
-    private final GatewayKafkaProperties props;
+    private final AppKafkaProperties props;
 
     /**
      * Reactive Kafka receiver subscribed to event topics.
@@ -88,7 +88,7 @@ public class SagaEventConsumer {
 
     private void onSubscribe(final Subscription s) {
         log.info("SagaEventConsumer subscribed: groupId={} topics={}",
-                props.getGroupId(), props.getEventTopics());
+                props.getGroupId(), props.getTopics().getEvents().all());
     }
 
     /**
