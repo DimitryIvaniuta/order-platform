@@ -32,9 +32,25 @@ public class OrderEntity {
     @Column("user_id")
     private UUID userId;
 
+    @Column("subtotal_amount")
+    private BigDecimal subtotalAmount = BigDecimal.ZERO;
+
+    @Column("discount_amount")
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
+    @Column("discount_code")
+    private String discountCode;
+
+    @Column("shipping_fee")
+    private BigDecimal shippingFee = BigDecimal.ZERO;
+
+    @Column("shipping_option")
+    private String shippingOption;
+
     @Column("total_amount")
     private BigDecimal totalAmount;
 
+    @Column("status")
     private OrderStatus status;
 
     @Column("created_at")
@@ -44,9 +60,22 @@ public class OrderEntity {
     private Instant updatedAt;
 
     public static OrderEntity newPending(String tenantId, UUID userId, BigDecimal amount) {
-        return new OrderEntity(
-                null, tenantId, userId, amount, OrderStatus.PENDING, null, null
-        );
+        return OrderEntity.builder()
+                .tenantId(tenantId)
+                .userId(userId)
+                .totalAmount(amount)
+                .status(OrderStatus.PENDING)
+                .build();
     }
 
+    /** bump the optimistic timestamp */
+    public void touchUpdatedAt() {
+        this.updatedAt = Instant.now();
+    }
+
+    /** just set the code; amount is set via applyDiscountAmount(...) */
+    public void setDiscountCode(String code) {
+        this.discountCode = code;
+        touchUpdatedAt();
+    }
 }

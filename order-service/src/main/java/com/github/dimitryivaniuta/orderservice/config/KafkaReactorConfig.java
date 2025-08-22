@@ -20,16 +20,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KafkaReactorConfig {
 
-    private final KafkaClientProperties clientProps;
-    private final AppKafkaProperties topics;
+    private final AppKafkaProperties props;
 
     @Bean
     KafkaSender<String, byte[]> kafkaSender() {
         Map<String, Object> p = new HashMap<>();
-        p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, clientProps.getBootstrapServers());
-        p.put(ProducerConfig.CLIENT_ID_CONFIG,          clientProps.getClientId());
-        p.put(ProducerConfig.ACKS_CONFIG,               "all");
-        p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,   StringSerializer.class);
+        p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, props.getBootstrapServers());
+        p.put(ProducerConfig.CLIENT_ID_CONFIG, props.getClientId());
+        p.put(ProducerConfig.ACKS_CONFIG, "all");
+        p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         p.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         return KafkaSender.create(SenderOptions.create(p));
     }
@@ -37,15 +36,15 @@ public class KafkaReactorConfig {
     @Bean
     KafkaReceiver<String, byte[]> kafkaReceiver() {
         Map<String, Object> c = new HashMap<>();
-        c.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,      clientProps.getBootstrapServers());
-        c.put(ConsumerConfig.GROUP_ID_CONFIG,               clientProps.getGroupId());
-        c.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,      "earliest");
-        c.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,   StringDeserializer.class);
+        c.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, props.getBootstrapServers());
+        c.put(ConsumerConfig.GROUP_ID_CONFIG, props.getGroupId());
+        c.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        c.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         c.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
 
         // Example: subscribe only to ORDER events here (gateway may subscribe to all)
         ReceiverOptions<String, byte[]> ro = ReceiverOptions.<String, byte[]>create(c)
-                .subscription(List.of(topics.getEvents().getOrder()));
+                .subscription(List.of(props.getTopics().getEvents().getOrder()));
 
         return KafkaReceiver.create(ro);
     }

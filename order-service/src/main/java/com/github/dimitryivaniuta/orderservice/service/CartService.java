@@ -1,14 +1,16 @@
 package com.github.dimitryivaniuta.orderservice.service;
 
-import com.github.dimitryivaniuta.orderservice.model.DiscountCodeEntity;
-import com.github.dimitryivaniuta.orderservice.model.OrderEntity;
-import com.github.dimitryivaniuta.orderservice.model.OrderItemEntity;
-import com.github.dimitryivaniuta.orderservice.web.dto.OrderResponse;
+import com.github.dimitryivaniuta.orderservice.model.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dimitryivaniuta.orderservice.web.dto.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
-// com.github.dimitryivaniuta.orderservice.service.CartService
 @Service
 @RequiredArgsConstructor
 public class CartService {
@@ -19,6 +21,7 @@ public class CartService {
     private final DiscountCodeRepository discountRepo;  // simple sync validation
     private final TotalsCalculator totals;
     private final OutboxEventFactory outbox;            // you already use it
+    private final ObjectMapper om;
 
     /** Get or create a PENDING order (acts as cart) for current user. */
     public Mono<OrderEntity> getOrCreateCart() {
@@ -40,17 +43,24 @@ public class CartService {
                     item.setProductId(req.productId());
                     item.setSku(req.sku());
                     item.setName(req.name());
-                    item.setColor(req.color());
-                    item.setAttributesJson(req.attributes());     // you have JSONB converters
+                    item.setAttributes(req.attributes());
                     item.setQuantity(req.quantity());
                     item.setUnitPrice(req.unitPrice());
                     item.computeLineTotal();
 
                     return itemRepo.save(item)
                             .then(recalcTotals(cart.getId(), ctx.tenantId()))
-                            .flatMap(updated -> outbox.emitCartItemAdded(ctx.tenantId(), updated, ctx.userId(), ctx.correlationId(), item).thenReturn(updated))
+                            .flatMap(updated ->
+                                    outbox.emitCartItemAdded(ctx.tenantId(), updated.getId(), ctx.userId(), ctx.correlationId(), item)
+                                            .thenReturn(updated)
+                            )
                             .map(OrderResponse::fromEntity)
-                            .flatMap(resp -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), cart.getId()).collectList().map(resp::withItems));
+                            .flatMap(resp ->
+                                    itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), cart.getId())
+                                            .map(OrderItemResponse::from)          // <-- map entity -> DTO
+                                            .collectList()
+                                            .map(resp::withItems)                         // now List<OrderItemResponse>
+                            );
                 })
         );
     }
@@ -61,17 +71,35 @@ public class CartService {
                 itemRepo.findByIdAndTenantId(itemId, ctx.tenantId())
                         .switchIfEmpty(Mono.error(new IllegalArgumentException("Item not found")))
                         .flatMap(i -> {
-                            if (req.quantity() != null) i.setQuantity(req.quantity());
-                            if (req.color() != null)    i.setColor(req.color());
-                            if (req.attributes() != null) i.setAttributesJson(req.attributes());
+                            if (req.quantity() != null) {
+                                i.setQuantity(req.quantity());
+                            }
+                            // Map<String,String> -> JSON handled by entity/converter
+                            if (req.attributes() != null) {
+                                i.setAttributes(req.attributes());
+                            }
                             i.computeLineTotal();
-                            return itemRepo.save(i).thenReturn(i.getOrderId());
+                            return itemRepo.save(i).thenReturn(i); // keep the saved item
                         })
-                        .flatMap(orderId -> recalcTotals(orderId, ctx.tenantId())
-                                .flatMap(updated -> outbox.emitCartItemUpdated(ctx.tenantId(), updated, ctx.userId(), ctx.correlationId()).thenReturn(updated))
+                        .flatMap(savedItem ->
+                                recalcTotals(savedItem.getOrderId(), ctx.tenantId())
+                                        .flatMap(updatedOrder ->
+                                                outbox.emitCartItemUpdated(
+                                                        ctx.tenantId(),
+                                                        updatedOrder.getId(),
+                                                        ctx.userId(),
+                                                        ctx.correlationId(),
+                                                        savedItem
+                                                ).thenReturn(updatedOrder)
+                                        )
                         )
                         .map(OrderResponse::fromEntity)
-                        .flatMap(resp -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems))
+                        .flatMap(resp ->
+                                itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id())
+                                        .map(OrderItemResponse::from)
+                                        .collectList()
+                                        .map(resp::withItems)
+                        )
         );
     }
 
@@ -81,11 +109,20 @@ public class CartService {
                 itemRepo.findByIdAndTenantId(itemId, ctx.tenantId())
                         .flatMap(i -> itemRepo.delete(i).thenReturn(i))
                         .switchIfEmpty(Mono.error(new IllegalArgumentException("Item not found")))
-                        .flatMap(i -> recalcTotals(i.getOrderId(), ctx.tenantId())
-                                .flatMap(updated -> outbox.emitCartItemRemoved(ctx.tenantId(), updated, ctx.userId(), ctx.correlationId(), i.getId()).thenReturn(updated))
+                        .flatMap(orderItem -> recalcTotals(orderItem.getOrderId(), ctx.tenantId())
+                                .flatMap(updated -> outbox.emitCartItemRemoved(ctx.tenantId(),
+                                                updated.getId(),
+                                                ctx.userId(),
+                                                ctx.correlationId(),
+                                                orderItem)
+                                        .thenReturn(updated))
                         )
                         .map(OrderResponse::fromEntity)
-                        .flatMap(resp -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems))
+                        .flatMap(resp ->
+                                itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id())
+                                        .map(OrderItemResponse::from)
+                                        .collectList()
+                                        .map(resp::withItems))
         );
     }
 
@@ -96,22 +133,43 @@ public class CartService {
                                 discountRepo.findById(req.code())
                                         .filter(DiscountCodeEntity::isActiveNow)
                                         .switchIfEmpty(Mono.error(new IllegalArgumentException("Invalid or expired discount code")))
-                                        .flatMap(dc -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), cart.getId()).collectList()
+                                        .flatMap(dc -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(),
+                                                        cart.getId()).collectList()
                                                 .flatMap(items -> {
                                                     var t = totals.compute(items, computeDiscount(dc, items), cart.getShippingFee());
+
                                                     cart.setDiscountCode(dc.getCode());
                                                     cart.setDiscountAmount(t.discount());
-                                                    cart.setSubtotalAmount(t.subtotal());
-                                                    cart.setTotalAmount(t.total());
+                                                    cart.setSubtotalAmount(t.subtotal()); // subtotal before discount (your model)
+                                                    cart.setTotalAmount(t.total());       // total after discount
                                                     cart.touchUpdatedAt();
+
                                                     return orderRepo.save(cart)
-                                                            .flatMap(saved -> outbox.emitDiscountApplied(ctx.tenantId(), saved, ctx.userId(), ctx.correlationId(), dc).thenReturn(saved));
+                                                            .flatMap(saved ->
+                                                                    outbox.emitDiscountApplied(
+                                                                            ctx.tenantId(),
+                                                                            saved.getId(),
+                                                                            ctx.userId(),
+                                                                            ctx.correlationId(),
+                                                                            dc.getCode(),
+                                                                            dc.getType().name(),  // or dc.getType().name()
+                                                                            t.discount(),
+                                                                            t.subtotal(),
+                                                                            t.total()
+                                                                    ).thenReturn(saved)
+                                                            );
                                                 })
                                         )
                         )
-                ).map(OrderResponse::fromEntity)
-                .flatMap(resp -> security.current().flatMap(ctx -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems)));
+                )
+                .map(OrderResponse::fromEntity)
+                .flatMap(resp -> security.current().flatMap(ctx ->
+                        itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id())
+                                .map(OrderItemResponse::from)
+                                .collectList()
+                                .map(resp::withItems)));
     }
+
 
     /** Select shipping -> request fee via Kafka (async) -> return current cart; totals adjust on SHIPPING_QUOTED. */
     public Mono<OrderResponse> chooseShipping(ChooseShippingRequest req) {
@@ -120,10 +178,21 @@ public class CartService {
                             cart.setShippingOption(req.optionCode());
                             cart.touchUpdatedAt();
                             return orderRepo.save(cart)
-                                    .flatMap(saved -> outbox.emitShippingQuoteRequested(ctx.tenantId(), saved, ctx.userId(), ctx.correlationId(), req.optionCode()).thenReturn(saved));
+                                    .flatMap(saved -> outbox.emitShippingQuoteRequested(ctx.tenantId(),
+                                            saved.getId(),
+                                            ctx.userId(),
+                                            ctx.correlationId(),
+                                            req.optionCode(),
+                                            req.weight(),
+                                            req.country(),
+                                            req.postalCode()).thenReturn(saved));
                         })
                 ).map(OrderResponse::fromEntity)
-                .flatMap(resp -> security.current().flatMap(ctx -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems)));
+                .flatMap(resp -> security.current().flatMap(ctx ->
+                        itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id())
+                                .map(OrderItemResponse::from)
+                                .collectList()
+                                .map(resp::withItems)));
     }
 
     /** Checkout -> emits ORDER_CREATE (you already have saga listeners). */
@@ -134,7 +203,11 @@ public class CartService {
                                         .thenReturn(cart)
                         )
                 ).map(OrderResponse::fromEntity)
-                .flatMap(resp -> security.current().flatMap(ctx -> itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems)));
+                .flatMap(resp -> security.current().flatMap(ctx ->
+                        itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id())
+                                .map(OrderItemResponse::from)
+                                .collectList()
+                                .map(resp::withItems)));
     }
 
     // ---- helpers ----
@@ -159,4 +232,29 @@ public class CartService {
             case AMOUNT  -> dc.getValue();
         };
     }
+
+    public String getAttributesJson(Map<String,String> attrs) {
+        try {
+            return (attrs == null || attrs.isEmpty())
+                    ? null
+                    : om.writeValueAsString(attrs);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to serialize item attributes", e);
+        }
+    }
+
+    public Mono<OrderResponse> currentCart() {
+        return getOrCreateCart() // OrderEntity (the cart)
+                .flatMap(cart ->
+                        security.current().flatMap(ctx ->
+                                itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), cart.getId())
+                                        .map(OrderItemResponse::from)     // <-- map entity -> DTO
+                                        .collectList()
+                                        .map(items ->
+                                                OrderResponse.fromEntity(cart)
+                                                        .withItems(items))
+                        )
+                );
+    }
+
 }

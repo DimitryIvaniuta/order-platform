@@ -8,12 +8,11 @@ ALTER TABLE orders
 
 -- order_items: color + specs
 ALTER TABLE order_items
-    ADD COLUMN IF NOT EXISTS color          VARCHAR(32),
     ADD COLUMN IF NOT EXISTS attributes_json JSONB;
 
 -- optional, simple built-in promo codes
 CREATE TABLE IF NOT EXISTS discount_codes (
-                                              code         VARCHAR(64) PRIMARY KEY,
+    code         VARCHAR(64) PRIMARY KEY,
     type         VARCHAR(16) NOT NULL,         -- 'PERCENT' or 'AMOUNT'
     value        NUMERIC(19,2) NOT NULL,
     active       BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -21,7 +20,7 @@ CREATE TABLE IF NOT EXISTS discount_codes (
     expires_at   TIMESTAMPTZ  NOT NULL DEFAULT (now() + interval '5 years'),
     max_uses     INT,
     used_count   INT          NOT NULL DEFAULT 0
-    );
+);
 
 -- seed a couple
 INSERT INTO discount_codes(code, type, value)

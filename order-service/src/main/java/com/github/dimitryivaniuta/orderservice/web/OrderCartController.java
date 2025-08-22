@@ -1,6 +1,7 @@
 package com.github.dimitryivaniuta.orderservice.web;
 
 import com.github.dimitryivaniuta.orderservice.service.CartService;
+import com.github.dimitryivaniuta.orderservice.web.dto.AddCartItemRequest;
 import com.github.dimitryivaniuta.orderservice.web.dto.ApplyDiscountRequest;
 import com.github.dimitryivaniuta.orderservice.web.dto.ChooseShippingRequest;
 import com.github.dimitryivaniuta.orderservice.web.dto.OrderResponse;
@@ -35,9 +36,6 @@ public class OrderCartController {
 
     @GetMapping
     public Mono<OrderResponse> currentCart() {
-        return cart.getOrCreateCart().map(OrderResponse::fromEntity)
-                .flatMap(resp -> cart.security.current().flatMap(ctx ->
-                        cart.itemRepo.findByTenantIdAndOrderId(ctx.tenantId(), resp.id()).collectList().map(resp::withItems)
-                ));
+        return cart.currentCart();
     }
 }

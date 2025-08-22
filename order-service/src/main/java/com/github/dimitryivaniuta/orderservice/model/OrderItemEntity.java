@@ -2,7 +2,11 @@ package com.github.dimitryivaniuta.orderservice.model;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.math.RoundingMode;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
@@ -17,6 +21,9 @@ public class OrderItemEntity {
     @Id
     private Long id;
 
+    @Column("attributes_json")
+    private Map<String,String> attributes;   // instead of String attributesJson
+
     @Column("tenant_id")
     private String tenantId;
 
@@ -30,6 +37,10 @@ public class OrderItemEntity {
 
     private String name;
 
+    @Column("currency")
+    private String currency;         // ISO-4217 (e.g., "USD")
+
+    @Column("quantity")
     private Integer quantity;
 
     @Column("unit_price")
@@ -43,6 +54,19 @@ public class OrderItemEntity {
 
     @Column("updated_at")
     private OffsetDateTime updatedAt;
+
+    // compute total
+    public BigDecimal computeLineTotal() {
+        BigDecimal total = (unitPrice == null || quantity <= 0)
+                ? BigDecimal.ZERO
+                : unitPrice.multiply(BigDecimal.valueOf(quantity));
+        return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    // optional convenience
+    public void recomputeTotals() {
+        this.lineTotal = computeLineTotal();
+    }
 
     public static OrderItemEntity of(
             String tenantId, Long orderId, UUID productId, String sku, String name,

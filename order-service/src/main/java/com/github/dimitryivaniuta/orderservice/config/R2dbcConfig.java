@@ -1,7 +1,10 @@
 package com.github.dimitryivaniuta.orderservice.config;
 
-import com.github.dimitryivaniuta.orderservice.model.converter.OrderStatusReadingConverter;
-import com.github.dimitryivaniuta.orderservice.model.converter.OrderStatusWritingConverter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dimitryivaniuta.orderservice.model.converter.JsonbToMapConverter;
+import com.github.dimitryivaniuta.orderservice.model.converter.MapToJsonbConverter;
+import com.github.dimitryivaniuta.orderservice.model.converter.OrderStatusRead;
+import com.github.dimitryivaniuta.orderservice.model.converter.OrderStatusWrite;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -16,14 +19,16 @@ import java.util.List;
 @EnableR2dbcAuditing
 public class R2dbcConfig {
     @Bean
-    public R2dbcCustomConversions r2dbcCustomConversions() {
+    public R2dbcCustomConversions r2dbcCustomConversions(ObjectMapper om) {
         // pick the Postgres dialect (adjust if you use another)
         var dialect = PostgresDialect.INSTANCE;
         var storeConversions = CustomConversions.StoreConversions.of(dialect.getSimpleTypeHolder());
 
         List<Converter<?, ?>> converters = List.of(
-                new OrderStatusReadingConverter(),
-                new OrderStatusWritingConverter()
+                new OrderStatusRead(),
+                new OrderStatusWrite(),
+                new JsonbToMapConverter(om),
+                new MapToJsonbConverter(om)
         );
 
         return new R2dbcCustomConversions(storeConversions, converters);

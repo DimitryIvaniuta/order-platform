@@ -5,6 +5,7 @@ import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Mono;
 
 public interface OrderRepository extends ReactiveCrudRepository<OrderEntity, Long> {
+    Mono<OrderEntity> findFirstByTenantIdAndUserIdAndStatusOrderByIdDesc(String tenantId, UUID userId, OrderStatus status);
     Mono<OrderEntity> findByIdAndTenantId(Long id, String tenantId);
     Mono<Boolean> existsByIdAndTenantId(Long id, String tenantId);
 }

@@ -6,30 +6,30 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public enum OrderStatus {
-    PENDING((short) 0),
-    AWAITING_PAYMENT((short) 1),
-    RESERVED((short) 2),
-    PAID((short) 3),
-    REJECTED((short) 4),
-    CANCELLED((short) 5);
+    PENDING(0),
+    AWAITING_PAYMENT(1),
+    RESERVED(2),
+    PAID(3),
+    REJECTED(4),
+    CANCELLED(5);
 
-    private final short code;
+    private final int code;
 
-    private static final Map<Short, OrderStatus> LOOKUP =
+    private static final Map<Integer, OrderStatus> LOOKUP =
             Arrays.stream(values())
                     .collect(Collectors.toUnmodifiableMap(OrderStatus::code, Function.identity()));
 
-    OrderStatus(short code) {
+    OrderStatus(int  code) {
         this.code = code;
     }
 
     /** Numeric code stored in DB (SMALLINT). */
-    public short code() {
+    public int  code() {
         return code;
     }
 
     /** Resolve from a SMALLINT value. Throws if unknown. */
-    public static OrderStatus fromCode(short code) {
+    public static OrderStatus fromCode(int code) {
         OrderStatus status = LOOKUP.get(code);
         if (status == null) {
             throw new IllegalArgumentException("Unknown OrderStatus code: " + code);

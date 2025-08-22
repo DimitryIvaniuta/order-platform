@@ -4,6 +4,5 @@ import java.util.Map;
 
 public record UpdateCartItemRequest(
         Integer quantity,
-        String color,
         Map<String,String> attributes
 ) {}
