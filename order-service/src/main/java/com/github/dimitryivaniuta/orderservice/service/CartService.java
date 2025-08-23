@@ -46,7 +46,7 @@ public class CartService {
                     item.setAttributes(req.attributes());
                     item.setQuantity(req.quantity());
                     item.setUnitPrice(req.unitPrice());
-                    item.computeLineTotal();
+                    item.setLineTotal(item.computeLineTotal());
 
                     return itemRepo.save(item)
                             .then(recalcTotals(cart.getId(), ctx.tenantId()))

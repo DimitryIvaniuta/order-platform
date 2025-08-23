@@ -1,6 +1,7 @@
 package com.github.dimitryivaniuta.common.kafka;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,20 +10,19 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 import java.util.List;
 
+@Data
 @Validated
 @ConfigurationProperties(prefix = "kafka")
-@Getter
-@Setter
 public class AppKafkaProperties {
 
     @NotBlank
-    private String bootstrapServers = "localhost:9092";
+    private String bootstrapServers; // localhost:9092
 
     @NotBlank
-    private String clientId = "app";
+    private String clientId; // app
 
     @NotBlank
-    private String groupId = "app-consumer";
+    private String groupId; // app-consumer
 
     private Topics topics = new Topics();
     private Producer producer = new Producer();

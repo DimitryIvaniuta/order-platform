@@ -5,6 +5,8 @@ import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.convert.WritingConverter;
 
 @WritingConverter
-public class OrderStatusWrite implements Converter<OrderStatus, Integer> {
-    public Integer convert(OrderStatus source){ return source.code(); }
+public class OrderStatusWrite implements Converter<OrderStatus, Short> {
+    public Short convert(OrderStatus source) {
+        return source.code();
+    }
 }
