@@ -1,2 +1,3 @@
 com.github.dimitryivaniuta.common.security.SecurityCommonAutoConfiguration
 com.github.dimitryivaniuta.common.kafka.KafkaCommonAutoConfiguration
+com.github.dimitryivaniuta.common.outbox.OutboxPublisherProperties

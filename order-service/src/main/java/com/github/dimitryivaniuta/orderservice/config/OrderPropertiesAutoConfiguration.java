@@ -1,6 +1,6 @@
 package com.github.dimitryivaniuta.orderservice.config;
 
-import com.github.dimitryivaniuta.orderservice.outbox.OutboxPublisherProperties;
+import com.github.dimitryivaniuta.common.outbox.OutboxPublisherProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 

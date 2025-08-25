@@ -2,14 +2,29 @@ spring:
   application:
     name: payment-service
 
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/${DB_NAME:payments}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT_PAYMENT:5434}/${DB_NAME_PAYMENTS:payments}
     username: ${DB_USER:user}
     password: ${DB_PASS:pass}
+    pool:
+      enabled: true
+      initial-size: 10
+      max-size: 50
+      max-idle-time: 30s
+      validation-query: SELECT 1
+      max-create-connection-time: 5s
+      max-acquire-time: 5s
+      max-life-time: 30m
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT_PAYMENT:5434}/${DB_NAME_PAYMENTS:payments}
+    user: ${DB_USER:user}
+    password: ${DB_PASS:pass}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
@@ -20,13 +35,94 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Option A (recommended): use issuer + discovery
+          issuer-uri: http://localhost:8080/api
+          # Option B (direct JWKS): comment issuer-uri and uncomment next line
+          # jwk-set-uri: http://localhost:8080/api/.well-known/jwks.json
+
+  main:
+    web-application-type: reactive
+
+  codec:
+    max-in-memory-size: 10MB  # roomy enough for PSP webhook payloads
+
 server:
   port: ${PAYMENT_PORT:8082}
+  shutdown: graceful
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
-v
+logging:
+  file:
+    name: logs/${spring.application.name}.log
+  # NEW: Logback rolling‑policy settings
+  logback:
+    rollingpolicy:
+      # how big each file can grow before rolling over
+      max‑file‑size: 50MB
+      # how many days to keep archived files
+      max‑history: 30
+      # (optional) total cap on all archives, e.g. 1GB
+      total‑size‑cap: 1GB
+
+  # your existing level & pattern config...
+  level:
+    root: INFO
+    com.github.dimitryivaniuta: DEBUG
+    io.r2dbc.postgresql: DEBUG
+    org.springframework.r2dbc.core: DEBUG
+    com.github.dimitryivaniuta.orderservice.outbox.OutboxPublisher: DEBUG
+
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  client-id: ${spring.application.name}
+  group-id: ${spring.application.name}-consumer
+  topics:
+    commands:
+      orderCreate: order.command.create.v1
+    events:
+      order:     order.events.v1
+      payment:   payment.events.v1
+      inventory: inventory.events.v1
+  producer:
+    acks: all
+    compression-type: lz4
+    linger-ms: 5
+    batch-size: 32768
+    delivery-timeout-ms: 120000
+
+  consumer:
+    enable-auto-commit: false
+    auto-offset-reset: earliest
+    max-poll-records: 500
+    fetch-max-wait-ms: 250
+    commit-interval: 2s
+
+outbox:
+  publisher:
+    batch-size: 200
+    poll-interval: PT5S
+    lease-duration: 20s
+    base-backoff: 5s
+    max-backoff: 2m
+    events-topic: ${kafka.topics.events.payment}

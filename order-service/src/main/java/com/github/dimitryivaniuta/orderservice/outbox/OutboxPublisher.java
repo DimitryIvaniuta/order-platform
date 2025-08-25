@@ -2,6 +2,7 @@ package com.github.dimitryivaniuta.orderservice.outbox;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dimitryivaniuta.common.outbox.OutboxPublisherProperties;
 import com.github.dimitryivaniuta.orderservice.web.dto.OutboxKey;
 import com.github.dimitryivaniuta.orderservice.web.dto.OutboxRow;
 import jakarta.annotation.PreDestroy;

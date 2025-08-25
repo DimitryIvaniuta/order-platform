@@ -1,4 +1,4 @@
-package com.github.dimitryivaniuta.orderservice.outbox;
+package com.github.dimitryivaniuta.common.outbox;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
