@@ -1,4 +1,6 @@
 package com.github.dimitryivaniuta.payment.outbox;
 
-public class OutboxKey {
-}
+import java.time.LocalDate;
+
+/** Composite identifier for the partitioned outbox row. */
+public record OutboxKey(Long id, LocalDate createdOn) {}

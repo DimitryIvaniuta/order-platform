@@ -1,4 +1,8 @@
 package com.github.dimitryivaniuta.payment.domain.repo;
 
-public class PaymentAttemptRepository {
+import com.github.dimitryivaniuta.payment.domain.model.PaymentAttemptEntity;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+
+public interface PaymentAttemptRepository extends ReactiveCrudRepository<PaymentAttemptEntity, Long> {
 }
+

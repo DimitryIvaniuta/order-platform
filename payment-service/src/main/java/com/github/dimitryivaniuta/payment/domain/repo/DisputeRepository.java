@@ -1,4 +1,8 @@
 package com.github.dimitryivaniuta.payment.domain.repo;
 
-public class DisputeRepository {
+import com.github.dimitryivaniuta.payment.domain.model.DisputeEntity;
+import org.springframework.data.repository.reactive.ReactiveCrudRepository;
+
+public interface DisputeRepository extends ReactiveCrudRepository<DisputeEntity, Long> {
 }
+

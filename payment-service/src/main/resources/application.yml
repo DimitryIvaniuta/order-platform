@@ -126,3 +126,12 @@ outbox:
     base-backoff: 5s
     max-backoff: 2m
     events-topic: ${kafka.topics.events.payment}
+
+provider:
+  fake:
+    enabled: true
+    min-latency: 10ms
+    max-latency: 50ms
+    max-amount-minor: 10000000
+    risk-modulo: 13
+    currency-pattern: "^[A-Z]{3}$"
