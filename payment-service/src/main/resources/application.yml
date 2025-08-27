@@ -128,6 +128,13 @@ outbox:
     events-topic: ${kafka.topics.events.payment}
 
 provider:
+  common:
+    # Fallbacks used if a provider doesn’t override these
+    idempotency-prefix: "payment-service:"   # keep quoted because of trailing colon
+    timeouts:
+      connect: 2s
+      read: 10s
+
   fake:
     enabled: true
     min-latency: 10ms
@@ -135,3 +142,31 @@ provider:
     max-amount-minor: 10000000
     risk-modulo: 13
     currency-pattern: "^[A-Z]{3}$"
+
+  adyen:
+    enabled: true
+    api-key: ${ADYEN_API_KEY}
+    merchant-account: ${ADYEN_MERCHANT}
+    base-url: https://checkout-test.adyen.com/v70
+    hmac-key: ${ADYEN_HMAC_KEY}
+    # Overrides; or omit to inherit from provider.common.*
+    idempotency-prefix: "payment-service:"
+    default-return-url: "http://localhost:8080/api/payments/adyen/return"
+    # timeouts:    # uncomment to override
+    #   connect: 3s
+    #   read: 12s
+
+  stripe:
+    enabled: true
+    api-key: ${STRIPE_SECRET_KEY:}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+    account-id: ${STRIPE_ACCOUNT_ID:}          # optional for Connect
+    base-url: https://api.stripe.com
+    api-version: "2023-10-16"                  # optional pin
+    idempotency-prefix: "payment-service:"
+    webhook:
+      endpoint-secret: ${STRIPE_WEBHOOK_SECRET:}
+      tolerance: 300s                          # 5 minutes
+    # timeouts:
+    #   connect: 3s
+    #   read: 12s

@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.github.dimitryivaniuta.payment.config.FakePaymentProviderProperties;
+import com.github.dimitryivaniuta.payment.config.PaymentProviderProperties;
 import lombok.RequiredArgsConstructor;
 //import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -21,7 +21,7 @@ public class FakePaymentProvider {
 
     public record Result(boolean authorized, String externalRef, String failureCode, String failureReason) {}
 
-    private final FakePaymentProviderProperties props;
+    private final PaymentProviderProperties props;
 
   /* ===========================
      AUTHORIZATION
@@ -30,17 +30,17 @@ public class FakePaymentProvider {
     /** Synchronous authorize used by current PaymentService. */
     public Result authorize(long amountMinor, String currencyCode) {
         // Disabled → always succeed
-        if (!props.isEnabled()) {
+        if (!props.getFake().isEnabled()) {
             return ok("AUTH-" + UUID.randomUUID());
         }
 
         // Validation & deterministic failures
         if (amountMinor <= 0) return fail("AMOUNT_INVALID", "Amount must be > 0");
-        if (currencyCode == null || !currencyCode.matches(props.getCurrencyPattern()))
-            return fail("CURRENCY_INVALID", "Currency must match " + props.getCurrencyPattern());
-        if (amountMinor > props.getMaxAmountMinor())
-            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getMaxAmountMinor());
-        if (amountMinor % props.getRiskModulo() == 0)
+        if (currencyCode == null || !currencyCode.matches(props.getFake().getCurrencyPattern()))
+            return fail("CURRENCY_INVALID", "Currency must match " + props.getFake().getCurrencyPattern());
+        if (amountMinor > props.getFake().getMaxAmountMinor())
+            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getFake().getMaxAmountMinor());
+        if (amountMinor % props.getFake().getRiskModulo() == 0)
             return fail("RISK_BLOCKED", "Transaction blocked by deterministic risk rule");
 
         return ok("AUTH-" + UUID.randomUUID());
@@ -58,17 +58,17 @@ public class FakePaymentProvider {
 
     /** Synchronous capture helper (not used by current PaymentService, but ready). */
     public Result capture(long amountMinor, String currencyCode, String authRef) {
-        if (!props.isEnabled()) {
+        if (!props.getFake().isEnabled()) {
             return ok("CAP-" + UUID.randomUUID());
         }
         if (authRef == null || authRef.isBlank())
             return fail("AUTH_REF_MISSING", "Authorization reference required");
         if (amountMinor <= 0) return fail("AMOUNT_INVALID", "Amount must be > 0");
-        if (currencyCode == null || !currencyCode.matches(props.getCurrencyPattern()))
-            return fail("CURRENCY_INVALID", "Currency must match " + props.getCurrencyPattern());
-        if (amountMinor > props.getMaxAmountMinor())
-            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getMaxAmountMinor());
-        if (amountMinor % props.getRiskModulo() == 0)
+        if (currencyCode == null || !currencyCode.matches(props.getFake().getCurrencyPattern()))
+            return fail("CURRENCY_INVALID", "Currency must match " + props.getFake().getCurrencyPattern());
+        if (amountMinor > props.getFake().getMaxAmountMinor())
+            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getFake().getMaxAmountMinor());
+        if (amountMinor % props.getFake().getRiskModulo() == 0)
             return fail("RISK_BLOCKED", "Transaction blocked by deterministic risk rule");
 
         return ok("CAP-" + UUID.randomUUID());
@@ -86,17 +86,17 @@ public class FakePaymentProvider {
 
     /** Synchronous refund helper (not used by current PaymentService, but ready). */
     public Result refund(long amountMinor, String currencyCode, String captureRef) {
-        if (!props.isEnabled()) {
+        if (!props.getFake().isEnabled()) {
             return ok("REF-" + UUID.randomUUID());
         }
         if (captureRef == null || captureRef.isBlank())
             return fail("CAPTURE_REF_MISSING", "Capture reference required");
         if (amountMinor <= 0) return fail("AMOUNT_INVALID", "Amount must be > 0");
-        if (currencyCode == null || !currencyCode.matches(props.getCurrencyPattern()))
-            return fail("CURRENCY_INVALID", "Currency must match " + props.getCurrencyPattern());
-        if (amountMinor > props.getMaxAmountMinor())
-            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getMaxAmountMinor());
-        if (amountMinor % props.getRiskModulo() == 0)
+        if (currencyCode == null || !currencyCode.matches(props.getFake().getCurrencyPattern()))
+            return fail("CURRENCY_INVALID", "Currency must match " + props.getFake().getCurrencyPattern());
+        if (amountMinor > props.getFake().getMaxAmountMinor())
+            return fail("AMOUNT_TOO_LARGE", "Amount exceeds limit " + props.getFake().getMaxAmountMinor());
+        if (amountMinor % props.getFake().getRiskModulo() == 0)
             return fail("RISK_BLOCKED", "Transaction blocked by deterministic risk rule");
 
         return ok("REF-" + UUID.randomUUID());
@@ -121,8 +121,8 @@ public class FakePaymentProvider {
     }
 
     private Duration randomLatency() {
-        long min = Math.max(0L, props.getMinLatency().toMillis());
-        long max = Math.max(min, props.getMaxLatency().toMillis());
+        long min = Math.max(0L, props.getFake().getMinLatency().toMillis());
+        long max = Math.max(min, props.getFake().getMaxLatency().toMillis());
         long delta = max - min;
         long jitter = (delta == 0) ? 0 : ThreadLocalRandom.current().nextLong(delta + 1);
         return Duration.ofMillis(min + jitter);
