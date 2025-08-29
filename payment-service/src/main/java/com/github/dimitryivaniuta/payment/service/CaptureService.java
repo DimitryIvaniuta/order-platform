@@ -6,9 +6,10 @@ import java.time.Instant;
 import java.util.Currency;
 import java.util.Map;
 
-import com.github.dimitryivaniuta.payment.api.dto.CaptureRequest;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentCaptureRequest;
 import com.github.dimitryivaniuta.payment.api.dto.CaptureView;
 import com.github.dimitryivaniuta.payment.api.mapper.PaymentMappers;
+import com.github.dimitryivaniuta.payment.currency.CurrencyCatalog;
 import com.github.dimitryivaniuta.payment.domain.model.CaptureEntity;
 import com.github.dimitryivaniuta.payment.domain.model.CaptureStatus;
 import com.github.dimitryivaniuta.payment.domain.model.PaymentEntity;
@@ -19,10 +20,12 @@ import com.github.dimitryivaniuta.payment.outbox.OutboxStore;
 import com.github.dimitryivaniuta.payment.saga.events.PaymentEvents;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.Nullable;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
+import com.github.dimitryivaniuta.payment.util.MoneyUtil;
 
 import static java.util.Objects.requireNonNull;
 
@@ -50,40 +53,50 @@ public class CaptureService {
     private final TransactionalOperator tx;
     private final DatabaseClient db;
 
+    private final CurrencyCatalog currencyCatalog;
+
     /**
      * Capture a payment (partial or full).
      * If {@code amountMinor} is null → captures the remaining authorized amount.
      * If {@code currencyCode} is null → uses the payment currency.
      */
-    public Mono<CaptureView> capture(long paymentId, CaptureRequest req) {
+    public Mono<CaptureView> capture(long paymentId, PaymentCaptureRequest req) {
         requireNonNull(req, "req");
 
         return paymentRepo.findById(paymentId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Payment not found: " + paymentId)))
-                .flatMap(pmt -> validatePaymentForCapture(pmt)
-                        .then(remainingAmount(pmt.getId()))
-                        .flatMap(alreadyCaptured -> {
-                            final long remaining = Math.max(0, pmt.getAmountMinor() - alreadyCaptured);
-                            final Long requested = req.amountMinor();
-                            final long toCapture = requested == null ? remaining : requested;
-                            if (toCapture <= 0) {
-                                return Mono.error(new IllegalStateException("Nothing to capture (remaining=" + remaining + ")"));
-                            }
-                            final String currencyReq = req.currencyCode();
-                            final String currency = (currencyReq == null || currencyReq.isBlank())
-                                    ? pmt.getCurrencyCode()
-                                    : normalizeCurrency(currencyReq);
+                .flatMap(pmt ->
+                        validatePaymentForCapture(pmt)
+                                .then(remainingAmount(pmt.getId()))
+                                .flatMap(alreadyCaptured -> {
+                                    final long remaining = Math.max(0, pmt.getAmountMinor() - alreadyCaptured);
+                                    if (remaining <= 0) {
+                                        return Mono.error(new IllegalStateException("Nothing to capture (remaining=0)"));
+                                    }
 
-                            if (!currency.equalsIgnoreCase(pmt.getCurrencyCode())) {
-                                return Mono.error(new IllegalArgumentException("Capture currency must match payment currency"));
-                            }
+                                    // look up ISO fraction digits for payment currency (fallback 2)
+                                    return currencyCatalog.fractionDigits(pmt.getCurrencyCode()).defaultIfEmpty(2)
+                                            .flatMap(fd -> {
+                                                final long toCaptureMinor = (req.amount() == null)
+                                                        ? remaining
+                                                        : MoneyUtil.toMinor(req.amount(), fd); // HALF_UP + exact long
 
-                            // Persist everything atomically
-                            return tx.transactional(
-                                    createPendingCapture(pmt, toCapture, currency)
-                                            .flatMap(capture -> invokeProviderAndFinalize(pmt, capture, alreadyCaptured))
-                            );
-                        })
+                                                if (toCaptureMinor <= 0 || toCaptureMinor > remaining) {
+                                                    return Mono.error(new IllegalArgumentException(
+                                                            "Invalid capture amount (toCaptureMinor=" + toCaptureMinor +
+                                                                    ", remaining=" + remaining + ")"));
+                                                }
+
+                                                // all captures must use the payment's currency
+                                                final String currency = pmt.getCurrencyCode();
+
+                                                // Persist atomically
+                                                return tx.transactional(
+                                                        createPendingCapture(pmt, toCaptureMinor, currency, req.idempotencyKey())
+                                                                .flatMap(capture -> invokeProviderAndFinalize(pmt, capture, alreadyCaptured))
+                                                );
+                                            });
+                                })
                 )
                 .map(PaymentMappers::toView);
     }
@@ -114,7 +127,10 @@ public class CaptureService {
                 .defaultIfEmpty(0L);
     }
 
-    private Mono<CaptureEntity> createPendingCapture(PaymentEntity pmt, long amountMinor, String currency) {
+    private Mono<CaptureEntity> createPendingCapture(PaymentEntity pmt,
+                                                     long amountMinor,
+                                                     String currency,
+                                                     @Nullable String idempotencyKey) {
         final Instant now = Instant.now();
         CaptureEntity pending = CaptureEntity.builder()
                 .tenantId(pmt.getTenantId())
@@ -123,6 +139,7 @@ public class CaptureService {
                 .currencyCode(currency)
                 .status(CaptureStatus.PENDING)
                 .psp(pmt.getPsp())
+                .idempotencyKey(idempotencyKey)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();

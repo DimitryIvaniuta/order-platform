@@ -65,11 +65,13 @@ public class RefundService {
      */
     public Mono<RefundView> refund(long paymentId, RefundRequest req) {
         requireNonNull(req, "req");
-        requireNonNull(req.amountMinor(), "amountMinor");
-        requireNonNull(req.currencyCode(), "currencyCode");
+        requireNonNull(req.amount(), "amount");
+        requireNonNull(req.amount().value(), "amount.value");
+        requireNonNull(req.amount().currency(), "amount.currency");
 
-        final long amount = req.amountMinor();
-        final String currencyReq = req.currencyCode();
+        final long amount       = req.amount().value();
+        final String currencyReq= req.amount().currency();
+        final String reasonCode = req.reference(); // reuse client reference as reason/idempotency tag
 
         return paymentRepo.findById(paymentId)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("Payment not found: " + paymentId)))
@@ -85,16 +87,12 @@ public class RefundService {
                                     .switchIfEmpty(Mono.error(new IllegalStateException(
                                             "Cannot refund: no successful capture found")))
                                     .flatMap(captureRef -> tx.transactional(
-                                            createPendingRefund(pmt, amount, pmt.getCurrencyCode(), req.reasonCode())
+                                            createPendingRefund(pmt, amount, pmt.getCurrencyCode(), reasonCode)
                                                     .flatMap(ref -> invokeProviderAndFinalize(pmt, ref, captureRef))
                                     ));
                         }))
                 .map(PaymentMappers::toView);
     }
-
-    /* =======================================================
-       Internals
-       ======================================================= */
 
     private Mono<Void> validatePaymentForRefund(PaymentEntity pmt) {
         final PaymentStatus st = pmt.getStatus();

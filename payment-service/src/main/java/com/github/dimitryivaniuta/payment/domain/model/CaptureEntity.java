@@ -29,6 +29,9 @@ public class CaptureEntity {
     @Column("currency_code")
     private String currencyCode;
 
+    @Column("idempotency_key")
+    private String idempotencyKey;
+
     @Column("payment_id")
     private Long paymentId;
 

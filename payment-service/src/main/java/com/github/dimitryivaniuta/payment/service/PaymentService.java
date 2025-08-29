@@ -1,12 +1,20 @@
 package com.github.dimitryivaniuta.payment.service;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Objects.requireNonNull;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.dimitryivaniuta.payment.api.dto.CaptureRequest;
-import com.github.dimitryivaniuta.payment.api.dto.CaptureView;
-import com.github.dimitryivaniuta.payment.api.dto.PaymentView;
-import com.github.dimitryivaniuta.payment.api.dto.RefundRequest;
-import com.github.dimitryivaniuta.payment.api.dto.RefundView;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.Currency;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+import com.github.dimitryivaniuta.payment.api.dto.*;
 import com.github.dimitryivaniuta.payment.api.mapper.PaymentMappers;
 import com.github.dimitryivaniuta.payment.domain.model.AttemptStatus;
 import com.github.dimitryivaniuta.payment.domain.model.PaymentAttemptEntity;
@@ -15,58 +23,40 @@ import com.github.dimitryivaniuta.payment.domain.model.PaymentStatus;
 import com.github.dimitryivaniuta.payment.domain.repo.PaymentAttemptRepository;
 import com.github.dimitryivaniuta.payment.domain.repo.PaymentRepository;
 import com.github.dimitryivaniuta.payment.outbox.OutboxStore;
-import com.github.dimitryivaniuta.payment.saga.events.PaymentAuthorizeRequested;
 import com.github.dimitryivaniuta.payment.saga.events.PaymentEvents;
-import com.github.dimitryivaniuta.payment.service.FakePaymentProvider;
-import java.time.Instant;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import static java.util.Objects.requireNonNull;
-
 /**
- * Application service for the Payment aggregate.
- *
- * Responsibilities
- * - Handle authorization command (idempotent, double-entry ledger, outbox events)
- * - Delegate capture/refund to specialized services
- * - Provide simple read helpers for controllers
- *
- * Notes
- * - All money is in minor units (long).
- * - DB does not enforce enum value sets; enums are enforced at the application level.
- * - Exactly-once effect for events is achieved by idempotent consumers; we publish via outbox (at-least-once).
+ * Orchestrates the payment lifecycle.
+ * - HTTP authorize uses PaymentAuthorizeRequest (orderId, amount, currency).
+ * - Kafka/Orchestrator can still call the overload that takes already-computed fields.
+ * - Tenant/user are resolved via SecurityTenantResolver inside the service.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
 
-    /* ==========================================================
-       Dependencies
-       ========================================================== */
     private final PaymentRepository paymentRepo;
     private final PaymentAttemptRepository attemptRepo;
+
+    // optional domain services; keep if you already have them
     private final CaptureService captureService;
     private final RefundService refundService;
     private final LedgerService ledger;
+
     private final OutboxStore outbox;
     private final FakePaymentProvider provider;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper om;
     private final TransactionalOperator tx;
-    private final DatabaseClient db;
+    private final SecurityTenantResolver security;
 
-    /* ==========================================================
-       Idempotency helpers (in code; DB doesn't know enum sets)
-       ========================================================== */
-    private static final Set<PaymentStatus> ACTIVE_PAYMENT_STATES = Set.of(
+    private static final Set<PaymentStatus> ACTIVE = Set.of(
             PaymentStatus.INITIATED,
             PaymentStatus.AUTHORIZING,
             PaymentStatus.REQUIRES_ACTION,
@@ -74,97 +64,154 @@ public class PaymentService {
             PaymentStatus.CAPTURING
     );
 
-    /* ==========================================================
-       Public API
-       ========================================================== */
+    /* =========================================================================
+       Public HTTP API
+       ========================================================================= */
 
     /**
-     * Authorize a payment (command from Kafka or internal orchestrator).
-     * Idempotent by (tenantId, sagaId); if not found, falls back to latest active for (tenantId, orderId).
+     * HTTP authorize: compute sagaId + amountMinor here from request.
      */
-    public Mono<PaymentView> authorize(final PaymentAuthorizeRequested cmd) {
-        requireNonNull(cmd, "cmd");
-        final String tenantId = requireNonNull(cmd.tenantId(), "tenantId");
-        final UUID sagaId     = requireNonNull(cmd.sagaId(), "sagaId");
-        final Long orderId    = requireNonNull(cmd.orderId(), "orderId");
-        final long amount     = requireNonNull(cmd.amountMinor(), "amountMinor");
-        final String currency = requireNonNull(cmd.currencyCode(), "currencyCode");
-        final UUID userId     = requireNonNull(cmd.userId(), "userId");
+    public Mono<PaymentView> authorize(final PaymentAuthorizeRequest req) {
+        requireNonNull(req, "req");
 
-        Mono<PaymentEntity> existingMono =
-                findByTenantAndSaga(tenantId, sagaId)
-                        .switchIfEmpty(findLatestByTenantAndOrder(tenantId, orderId)
-                                .filter(p -> ACTIVE_PAYMENT_STATES.contains(p.getStatus())));
+        return security.current().flatMap(ctx -> {
+            final String tenantId = ctx.getTenantId();
+            final UUID userId = ctx.getUserId();
+            final Long orderId = requireNonNull(req.orderId(), "orderId");
 
-        return existingMono
-                .flatMap(existing -> {
-                    log.info("authorize(): idempotent hit paymentId={} tenant={} saga={}",
-                            existing.getId(), tenantId, sagaId);
-                    return Mono.just(existing);
-                })
-                .switchIfEmpty(
-                        Mono.defer(() -> tx.transactional(
-                                // 1) Create payment (INITIATED)
-                                paymentRepo.save(PaymentEntity.builder()
-                                                .tenantId(tenantId)
-                                                .sagaId(sagaId)
-                                                .orderId(orderId)
-                                                .userId(userId)
-                                                .amountMinor(amount)
-                                                .currencyCode(currency)
-                                                .status(PaymentStatus.INITIATED)
-                                                .psp("FAKE")
-                                                .createdAt(Instant.now())
-                                                .updatedAt(Instant.now())
-                                                .build())
-                                        // 2) Create initial attempt (PENDING)
-                                        .flatMap(saved -> attemptRepo.save(PaymentAttemptEntity.builder()
-                                                        .tenantId(tenantId)
-                                                        .paymentId(saved.getId())
-                                                        .attemptNo(1)
-                                                        .status(AttemptStatus.PENDING)
-                                                        .psp("FAKE")
-                                                        .createdAt(Instant.now())
-                                                        .updatedAt(Instant.now())
-                                                        .build())
-                                                .thenReturn(saved))
-                                        // 3) Call provider & finalize
-                                        .flatMap(this::handleProviderAuthorize)
-                        )))
-                .map(PaymentMappers::toView);
+            final String currency = (req.currency() == null || req.currency().isBlank())
+                    ? "USD" : req.currency().toUpperCase();
+
+            final long amountMinor = toMinor(requireNonNull(req.amount(), "amount"), currency);
+            final UUID sagaId = deterministicSagaId(tenantId, orderId);
+
+            return authorizeInternal(tenantId, sagaId, orderId, userId, amountMinor, currency)
+                    .map(PaymentMappers::toView);
+        });
     }
 
     /**
-     * Convenience wrapper delegating to {@link CaptureService}.
+     * Controller helpers
      */
-    public Mono<CaptureView> capture(long paymentId, CaptureRequest req) {
+    public Flux<PaymentView> listByOrderId(long orderId) {
+        return security.current().flatMapMany(ctx ->
+                paymentRepo.findAllByTenantAndOrder(ctx.getTenantId(), orderId)
+                        .map(PaymentMappers::toView));
+    }
+
+    public Mono<PaymentView> getById(long id) {
+        return security.current().flatMap(ctx ->
+                paymentRepo.findByTenantAndId(ctx.getTenantId(), id)
+                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Payment not found")))
+                        .map(PaymentMappers::toView));
+    }
+
+    public Mono<CaptureView> capture(long paymentId, PaymentCaptureRequest req) {
         return captureService.capture(paymentId, req);
     }
 
-    /**
-     * Convenience wrapper delegating to {@link RefundService}.
-     */
     public Mono<RefundView> refund(long paymentId, RefundRequest req) {
         return refundService.refund(paymentId, req);
     }
 
-    /**
-     * Read helper for controllers.
-     */
-    public Mono<PaymentView> getPaymentView(long id) {
-        return paymentRepo.findById(id).map(PaymentMappers::toView);
+    // Optional test hooks (used by your controller compile complaints)
+    public Mono<PaymentView> simulateWebhookSuccess(long paymentId) {
+        return security.current().flatMap(ctx ->
+                paymentRepo.findByTenantAndId(ctx.getTenantId(), paymentId)
+                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Payment not found")))
+                        .flatMap(p -> {
+                            p.setStatus(PaymentStatus.CAPTURED);
+                            p.setUpdatedAt(Instant.now());
+                            return paymentRepo.save(p).flatMap(saved -> emitCaptured(saved)
+                                    .thenReturn(PaymentMappers.toView(saved)));
+                        })
+        );
     }
 
-    /* ==========================================================
-       Internals — Provider authorize flow
-       ========================================================== */
+    public Mono<PaymentView> simulateWebhookFailure(long paymentId) {
+        return security.current().flatMap(ctx ->
+                paymentRepo.findByTenantAndId(ctx.getTenantId(), paymentId)
+                        .switchIfEmpty(Mono.error(new IllegalArgumentException("Payment not found")))
+                        .flatMap(p -> {
+                            p.setStatus(PaymentStatus.FAILED);
+                            p.setUpdatedAt(Instant.now());
+                            return paymentRepo.save(p).flatMap(saved -> emitAuthFailed(saved)
+                                    .thenReturn(PaymentMappers.toView(saved)));
+                        })
+        );
+    }
+
+    /* =========================================================================
+       Shared internal flow (also usable from Kafka/orchestrator code)
+       ========================================================================= */
+
+    public Mono<PaymentView> authorize(
+            final String tenantId,
+            final UUID sagaId,
+            final Long orderId,
+            final UUID userId,
+            final long amountMinor,
+            final String currencyCode
+    ) {
+        return authorizeInternal(tenantId, sagaId, orderId, userId, amountMinor, currencyCode)
+                .map(PaymentMappers::toView);
+    }
+
+    private Mono<PaymentEntity> authorizeInternal(
+            final String tenantId,
+            final UUID sagaId,
+            final Long orderId,
+            final UUID userId,
+            final long amountMinor,
+            final String currencyCode
+    ) {
+        // Idempotency check
+        Mono<PaymentEntity> existing =
+                paymentRepo.findLatestByTenantAndSaga(tenantId, sagaId)
+                        .switchIfEmpty(paymentRepo.findLatestByTenantAndOrder(tenantId, orderId)
+                                .filter(p -> ACTIVE.contains(p.getStatus())));
+
+        return existing.switchIfEmpty(Mono.defer(() ->
+                tx.transactional(
+                        // 1) create payment
+                        paymentRepo.save(PaymentEntity.builder()
+                                        .tenantId(tenantId)
+                                        .sagaId(sagaId)
+                                        .orderId(orderId)
+                                        .userId(userId)
+                                        .amountMinor(amountMinor)
+                                        .currencyCode(currencyCode)
+                                        .status(PaymentStatus.INITIATED)
+                                        .psp("FAKE")
+                                        .createdAt(Instant.now())
+                                        .updatedAt(Instant.now())
+                                        .build())
+                                // 2) create first attempt (PENDING)
+                                .flatMap(p -> attemptRepo.save(PaymentAttemptEntity.builder()
+                                                .tenantId(tenantId)
+                                                .paymentId(p.getId())
+                                                .attemptNo(1)
+                                                .status(AttemptStatus.PENDING)
+                                                .psp("FAKE")
+                                                .createdAt(Instant.now())
+                                                .updatedAt(Instant.now())
+                                                .build())
+                                        .thenReturn(p))
+                                // 3) call provider and finalize
+                                .flatMap(this::handleProviderAuthorize)
+                )
+        )).doOnNext(p -> log.info("authorize(): paymentId={} status={}", p.getId(), p.getStatus()));
+    }
+
+    /* =========================================================================
+       Provider authorize handling
+       ========================================================================= */
 
     private Mono<PaymentEntity> handleProviderAuthorize(final PaymentEntity payment) {
-        // Fake provider: sync call with deterministic rules
+        // Fake provider returns a sync result
         var res = provider.authorize(payment.getAmountMinor(), payment.getCurrencyCode());
 
         if (res.authorized()) {
-            // Attempt succeeded
             var attempt2 = PaymentAttemptEntity.builder()
                     .tenantId(payment.getTenantId())
                     .paymentId(payment.getId())
@@ -186,17 +233,16 @@ public class PaymentService {
                     .flatMap(saved -> ledger.postAuthorization(saved).thenReturn(saved))
                     .flatMap(saved -> emitAuthorized(saved).thenReturn(saved));
         } else {
-            // Attempt failed
             var attempt2 = PaymentAttemptEntity.builder()
                     .tenantId(payment.getTenantId())
                     .paymentId(payment.getId())
                     .attemptNo(2)
                     .status(AttemptStatus.FAILED)
                     .psp("FAKE")
-                    .createdAt(Instant.now())
-                    .updatedAt(Instant.now())
                     .failureCode(res.failureCode())
                     .failureReason(res.failureReason())
+                    .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
                     .build();
 
             payment.setStatus(PaymentStatus.FAILED);
@@ -210,9 +256,9 @@ public class PaymentService {
         }
     }
 
-    /* ==========================================================
+    /* =========================================================================
        Outbox events
-       ========================================================== */
+       ========================================================================= */
 
     private Mono<Void> emitAuthorized(PaymentEntity p) {
         var evt = PaymentEvents.Authorized.builder()
@@ -224,6 +270,21 @@ public class PaymentService {
                 .currencyCode(p.getCurrencyCode())
                 .psp(p.getPsp())
                 .pspRef(p.getPspRef())
+                .ts(Instant.now())
+                .build();
+        return emit("payment", p.getId(), evt.type(), p.getTenantId(), p.getSagaId(), evt);
+    }
+
+    private Mono<Void> emitCaptured(PaymentEntity p) {
+        var evt = PaymentEvents.Captured.builder()
+                .sagaId(p.getSagaId())
+                .tenantId(p.getTenantId())
+                .orderId(p.getOrderId())
+                .paymentId(p.getId())
+                .amountMinor(p.getAmountMinor())
+                .currencyCode(p.getCurrencyCode())
+                .psp(p.getPsp())
+                .pspCaptureRef(p.getPspRef())
                 .ts(Instant.now())
                 .build();
         return emit("payment", p.getId(), evt.type(), p.getTenantId(), p.getSagaId(), evt);
@@ -249,53 +310,33 @@ public class PaymentService {
                             UUID sagaId,
                             Object payload) {
         try {
-            String json = objectMapper.writeValueAsString(payload);
+            String json = om.writeValueAsString(payload);
             return outbox.saveEvent(
-                            tenantId,
-                            sagaId,
-                            aggregateType,
-                            aggregateId,
-                            eventType,
-                            String.valueOf(aggregateId),
-                            json,
-                            Map.of()
-                    )
-                    .then();
+                    tenantId,
+                    sagaId,
+                    aggregateType,
+                    aggregateId,
+                    eventType,
+                    String.valueOf(aggregateId),
+                    json,
+                    Map.of()
+            ).then();
         } catch (JsonProcessingException e) {
             return Mono.error(e);
         }
     }
 
-    /* ==========================================================
-       Lookups (idempotency)
-       ========================================================== */
+    /* =========================================================================
+       Helpers
+       ========================================================================= */
 
-    private Mono<PaymentEntity> findByTenantAndSaga(String tenantId, UUID sagaId) {
-        return db.sql("""
-                SELECT id FROM payments
-                WHERE tenant_id = :t AND saga_id = :s
-                ORDER BY id DESC
-                LIMIT 1
-                """)
-                .bind("t", tenantId)
-                .bind("s", sagaId)
-                .map((row, meta) -> row.get("id", Long.class))
-                .one()
-                .flatMap(paymentRepo::findById);
+    private static UUID deterministicSagaId(String tenantId, Long orderId) {
+        byte[] seed = (tenantId + "|ORDER|" + orderId).getBytes(UTF_8);
+        return UUID.nameUUIDFromBytes(seed);
     }
 
-    private Mono<PaymentEntity> findLatestByTenantAndOrder(String tenantId, Long orderId) {
-        return db.sql("""
-                SELECT id FROM payments
-                WHERE tenant_id = :t AND order_id = :o
-                ORDER BY id DESC
-                LIMIT 1
-                """)
-                .bind("t", tenantId)
-                .bind("o", orderId)
-                .map((row, meta) -> row.get("id", Long.class))
-                .one()
-                .flatMap(paymentRepo::findById)
-                .onErrorResume(e -> Mono.empty());
+    private static long toMinor(BigDecimal amount, String currencyCode) {
+        int fd = Currency.getInstance(currencyCode).getDefaultFractionDigits();
+        return amount.movePointRight(fd).setScale(0, RoundingMode.HALF_UP).longValueExact();
     }
 }

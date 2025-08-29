@@ -3,14 +3,19 @@ package com.github.dimitryivaniuta.payment.provider.adyen;
 import java.util.Map;
 import java.util.Objects;
 
+import com.github.dimitryivaniuta.payment.api.dto.Amount;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentAuthResponse;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentCaptureResponse;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentRequest;
+import com.github.dimitryivaniuta.payment.api.dto.RefundRequest;
+import com.github.dimitryivaniuta.payment.api.dto.RefundResponse;
 import com.github.dimitryivaniuta.payment.config.PaymentProviderProperties;
+import com.github.dimitryivaniuta.payment.provider.adyen.dto.PaymentCaptureRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.*;
@@ -68,74 +73,23 @@ public class AdyenClient {
                 .build();
     }
 
-
-
-  /* ===========================
-     API models
-     =========================== */
-
-    @Value public static class Amount { String currency; Long value; }
-
-    @Value public static class PaymentRequest {
-        Amount amount;
-        String reference;
-        String merchantAccount;
-        Map<String,Object> paymentMethod; // tokenized details / paymentMethodId
-        String returnUrl;
-        Boolean channelEcommerce; // sent as additionalData marker
-        Map<String,Object> additionalData;
-    }
-
-    @Value public static class PaymentResponse {
-        String resultCode;          // "Authorised","Refused","Pending","Received"
-        String pspReference;        // auth ref
-        String refusalReason;       // present when refused
-        Map<String,Object> action;  // for SCA/redirect flows
-    }
-
-    @Value public static class CaptureRequest {
-        Amount amount;
-        String merchantAccount;
-        String reference;
-    }
-
-    @Value public static class CaptureResponse {
-        String pspReference;   // capture ref
-        String status;         // "received"
-    }
-
-    @Value public static class RefundRequest {
-        Amount amount;
-        String merchantAccount;
-        String reference;
-    }
-
-    @Value public static class RefundResponse {
-        String pspReference;   // refund ref
-        String status;         // "received"
-    }
-
-  /* ===========================
-     Calls
-     =========================== */
-
-    public Mono<PaymentResponse> payments(PaymentRequest req, String idempotencyKey) {
+public Mono<PaymentAuthResponse> payments(PaymentRequest req, String idempotencyKey) {
         return client().post()
                 .uri("/payments")
                 .headers(h -> applyIdempotency(h, idempotencyKey))
                 .body(BodyInserters.fromValue(req))
                 .retrieve()
-                .bodyToMono(PaymentResponse.class);
+                    .bodyToMono(PaymentAuthResponse.class);
     }
 
-    public Mono<CaptureResponse> captures(String authPspReference, CaptureRequest req, String idempotencyKey) {
+    public Mono<PaymentCaptureResponse> captures(String authPspReference, PaymentCaptureRequest req, String idempotencyKey) {
         Objects.requireNonNull(authPspReference, "authPspReference");
         return client().post()
                 .uri("/payments/{psp}/captures", authPspReference)
                 .headers(h -> applyIdempotency(h, idempotencyKey))
                 .body(BodyInserters.fromValue(req))
                 .retrieve()
-                .bodyToMono(CaptureResponse.class);
+                .bodyToMono(PaymentCaptureResponse.class);
     }
 
     public Mono<RefundResponse> refunds(String captureOrAuthPspReference, RefundRequest req, String idempotencyKey) {

@@ -1,130 +1,209 @@
 package com.github.dimitryivaniuta.payment.provider.adyen;
 
-import java.util.Map;
-import java.util.UUID;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentAuthResponse;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentCaptureResponse;
+import com.github.dimitryivaniuta.payment.api.dto.PaymentRequest;
+import com.github.dimitryivaniuta.payment.api.dto.RefundRequest;
+import com.github.dimitryivaniuta.payment.api.dto.RefundResponse;
+import com.github.dimitryivaniuta.payment.provider.adyen.dto.PaymentCaptureRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.util.Map;
+import java.util.UUID;
+
 /**
- * Provider adapter with a simple, synchronous façade API to match your service usage.
- * Internally calls the reactive AdyenClient and blocks at the boundary via .blockOptional()
- * ONLY for these minimal operations—so the rest of your pipeline stays reactive.
- *
- * If you prefer fully-reactive end-to-end, expose Mono<Result> variants and update services accordingly.
+ * Thin adapter around {@link AdyenClient}.
+ * - Builds typed requests from simple primitives.
+ * - Interprets Adyen result codes into a compact {@link Result}.
+ * - Provides sync facades (blocking at the edge) and reactive alternatives.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AdyenPaymentProvider {
 
-    public record Result(boolean authorized, String externalRef, String failureCode, String failureReason) {}
+    @Value
+    public static class Result {
+        boolean authorized;
+        String externalRef;     // PSP ref
+        String failureCode;     // e.g., "REFUSED"
+        String failureReason;   // provider message
+        boolean requiresAction; // SCA / redirect flow
+    }
 
     private final AdyenClient adyen;
 
-  /* ===========================
-     AUTHORIZATION
-     =========================== */
+    /* ==========================================================
+       AUTHORIZATION
+       ========================================================== */
 
     /**
-     * Authorize a payment. The payment method should be a tokenized detail map
-     * (e.g., { "type": "scheme", "storedPaymentMethodId": "...." }).
-     *
-     * @param amountMinor minor units
-     * @param currency ISO code
-     * @param reference merchant reference you can use to correlate (e.g., "tenant:order:paymentId")
-     * @param paymentMethod tokenized method map
-     * @param idempotencyKey caller idempotency key (saga/payment id)
+     * Synchronous authorization facade.
+     * @param amountMinor  minor units (e.g., cents)
+     * @param currency     ISO 4217 code (e.g., "USD")
+     * @param reference    your merchant reference (idempotent in your domain)
+     * @param paymentMethod tokenized payment method map (Adyen format)
+     * @param idempotencyKey Adyen idempotency key
      */
     public Result authorize(long amountMinor,
                             String currency,
                             String reference,
-                            Map<String,Object> paymentMethod,
+                            Map<String, Object> paymentMethod,
                             String idempotencyKey) {
 
-        var req = new AdyenClient.PaymentRequest(
-                AdyenClient.amount(currency, amountMinor),
-                reference,
-                adyen.props().getMerchantAccount(),
-                paymentMethod,
-                adyen.props().getDefaultReturnUrl(),
-                Boolean.TRUE,
-                AdyenClient.map("allow3DS2", true) // hint; Adyen may switch to action flow
-        );
+        PaymentRequest req = PaymentRequest.builder()
+                .amount(new PaymentRequest.Amount(currency, amountMinor))
+                .reference(reference)
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .paymentMethod(paymentMethod)
+                .returnUrl(adyen.props().getDefaultReturnUrl())
+                .storePaymentMethod(Boolean.TRUE)
+                .additionalData(Map.of("allow3DS2", true))
+                .build();
 
-        var respOpt = adyen.payments(req, idempotencyKey).blockOptional();
-        if (respOpt.isEmpty()) {
-            return fail("NO_RESPONSE", "No response from Adyen");
-        }
-        var resp = respOpt.get();
-        var code = safe(resp.getResultCode());
-        if ("Authorised".equalsIgnoreCase(code)) {
-            return ok(resp.getPspReference());
-        }
-        if ("Pending".equalsIgnoreCase(code) || "Received".equalsIgnoreCase(code)) {
-            // Treat as success to move forward, or surface REQUIRES_ACTION in your domain if you prefer
-            return ok(resp.getPspReference());
-        }
-        return fail(code == null ? "REFUSED" : code.toUpperCase(), safe(resp.getRefusalReason()));
+        PaymentAuthResponse resp = adyen.payments(req, idempotencyKey).block();
+        return toAuthResult(resp);
     }
 
-  /* ===========================
-     CAPTURE
-     =========================== */
+    /** Reactive variant (no blocking). */
+    public Mono<Result> authorizeRx(long amountMinor,
+                                    String currency,
+                                    String reference,
+                                    Map<String, Object> paymentMethod,
+                                    String idempotencyKey) {
+        PaymentRequest req = PaymentRequest.builder()
+                .amount(new PaymentRequest.Amount(currency, amountMinor))
+                .reference(reference)
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .paymentMethod(paymentMethod)
+                .returnUrl(adyen.props().getDefaultReturnUrl())
+                .storePaymentMethod(Boolean.TRUE)
+                .additionalData(Map.of("allow3DS2", true))
+                .build();
 
+        return adyen.payments(req, idempotencyKey).map(this::toAuthResult);
+    }
+
+    private Result toAuthResult(PaymentAuthResponse resp) {
+        if (resp == null) {
+            log.warn("Adyen authorize: no response");
+            return new Result(false, null, "NO_RESPONSE", "No response from Adyen", false);
+        }
+        final String code = nz(resp.resultCode());
+        final String psp  = nz(resp.pspReference());
+        final String refusal = nz(resp.refusalReason());
+        final boolean hasAction = resp.action() != null && !resp.action().isEmpty();
+
+        // Typical codes: "Authorised", "Refused", "Pending", "Received"
+        if ("Authorised".equalsIgnoreCase(code)) {
+            return new Result(true, psp, null, null, hasAction);
+        }
+        if ("Pending".equalsIgnoreCase(code) || "Received".equalsIgnoreCase(code)) {
+            // If you want to force SCA step handling here, set authorized=false and requiresAction=true when action!=null
+            return new Result(true, psp, null, null, hasAction);
+        }
+        return new Result(false, null, code.isBlank() ? "REFUSED" : code.toUpperCase(), refusal, hasAction);
+    }
+
+    /* ==========================================================
+       CAPTURE
+       ========================================================== */
+
+    /**
+     * Synchronous capture facade.
+     * @param amountMinor amount to capture in minor units
+     * @param currency ISO 4217
+     * @param authPspReference original authorization PSP reference
+     * @param idempotencyKey Adyen idempotency key for capture
+     */
     public Result capture(long amountMinor,
                           String currency,
                           String authPspReference,
                           String idempotencyKey) {
-        var req = new AdyenClient.CaptureRequest(
-                AdyenClient.amount(currency, amountMinor),
-                adyen.props().getMerchantAccount(),
-                "cap-" + UUID.randomUUID()
-        );
-        var respOpt = adyen.captures(authPspReference, req, idempotencyKey).blockOptional();
-        if (respOpt.isEmpty()) {
-            return fail("NO_RESPONSE", "No response from Adyen");
-        }
-        var resp = respOpt.get();
-        // Adyen returns "received" and processes async; consider webhooks for final state
-        return ok(resp.getPspReference());
+
+        PaymentCaptureRequest req = PaymentCaptureRequest.builder()
+                .amount(new PaymentCaptureRequest.Amount(currency, amountMinor))
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .reference("cap-" + UUID.randomUUID())
+                .build();
+
+        PaymentCaptureResponse resp = adyen.captures(authPspReference, req, idempotencyKey).block();
+        return toCaptureOrRefundResult(resp == null ? null : resp.pspReference());
     }
 
-  /* ===========================
-     REFUND
-     =========================== */
+    /** Reactive variant (no blocking). */
+    public Mono<Result> captureRx(long amountMinor,
+                                  String currency,
+                                  String authPspReference,
+                                  String idempotencyKey) {
+        PaymentCaptureRequest req = PaymentCaptureRequest.builder()
+                .amount(new PaymentCaptureRequest.Amount(currency, amountMinor))
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .reference("cap-" + UUID.randomUUID())
+                .build();
 
+        return adyen.captures(authPspReference, req, idempotencyKey)
+                .map(r -> toCaptureOrRefundResult(r == null ? null : r.pspReference()));
+    }
+
+    /* ==========================================================
+       REFUND
+       ========================================================== */
+
+    /**
+     * Synchronous refund facade.
+     * @param amountMinor  refund amount in minor units
+     * @param currency     ISO 4217
+     * @param captureOrAuthPspReference PSP reference of capture (preferred) or auth
+     * @param idempotencyKey Adyen idempotency key for refund
+     */
     public Result refund(long amountMinor,
                          String currency,
                          String captureOrAuthPspReference,
                          String idempotencyKey) {
-        var req = new AdyenClient.RefundRequest(
-                AdyenClient.amount(currency, amountMinor),
-                adyen.props().getMerchantAccount(),
-                "ref-" + UUID.randomUUID()
-        );
-        var respOpt = adyen.refunds(captureOrAuthPspReference, req, idempotencyKey).blockOptional();
-        if (respOpt.isEmpty()) {
-            return fail("NO_RESPONSE", "No response from Adyen");
+
+        RefundRequest req = RefundRequest.builder()
+                .amount(new RefundRequest.Amount(currency, amountMinor))
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .reference("ref-" + UUID.randomUUID())
+                .build();
+
+        RefundResponse resp = adyen.refunds(captureOrAuthPspReference, req, idempotencyKey).block();
+        return toCaptureOrRefundResult(resp == null ? null : resp.pspReference());
+    }
+
+    /** Reactive variant (no blocking). */
+    public Mono<Result> refundRx(long amountMinor,
+                                 String currency,
+                                 String captureOrAuthPspReference,
+                                 String idempotencyKey) {
+        RefundRequest req = RefundRequest.builder()
+                .amount(new RefundRequest.Amount(currency, amountMinor))
+                .merchantAccount(adyen.props().getMerchantAccount())
+                .reference("ref-" + UUID.randomUUID())
+                .build();
+
+        return adyen.refunds(captureOrAuthPspReference, req, idempotencyKey)
+                .map(r -> toCaptureOrRefundResult(r == null ? null : r.pspReference()));
+    }
+
+    /* ==========================================================
+       Helpers
+       ========================================================== */
+
+    private Result toCaptureOrRefundResult(String pspReference) {
+        if (pspReference == null || pspReference.isBlank()) {
+            return new Result(false, null, "NO_RESPONSE", "No PSP reference returned", false);
         }
-        var resp = respOpt.get();
-        return ok(resp.getPspReference());
+        // Adyen capture/refund are often async -> treat as accepted; final state via webhook
+        return new Result(true, pspReference, null, null, false);
     }
 
-  /* ===========================
-     Helpers
-     =========================== */
-
-    private static Result ok(String ref) {
-        return new Result(true, ref, null, null);
-    }
-
-    private static Result fail(String code, String reason) {
-        return new Result(false, null, code, reason);
-    }
-
-    private static String safe(String s) {
-        return s;
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 }
