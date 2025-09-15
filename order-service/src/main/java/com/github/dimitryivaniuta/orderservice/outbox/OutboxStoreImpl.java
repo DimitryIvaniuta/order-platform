@@ -26,15 +26,13 @@ public class OutboxStoreImpl implements OutboxStore {
     private final ObjectMapper om;
 
     // ------------ INSERT --------------
-
-    @Override
     public Mono<OutboxRow> insertRow(
             String tenantId,
             UUID sagaId,
             String aggregateType,
-            Long aggregateId,         // may be null
+            Long aggregateId,        // may be null
             String eventType,
-            String eventKey,           // may be null
+            String eventKey,         // may be null
             String payloadJson,
             Map<String, String> headers
     ) {
@@ -44,46 +42,20 @@ public class OutboxStoreImpl implements OutboxStore {
         requireNonNull(payloadJson, "payloadJson");
 
         if (sagaId == null) sagaId = deriveSagaId(tenantId, aggregateType, eventKey);
-        String headersJson = toJson(headers == null ? Map.of() : headers);
+        final String headersJson = toJson(headers == null ? Map.of() : headers);
 
-        // Build VALUES list with SQL NULLs for nullable columns so we NEVER bind nulls.
-        final boolean hasAggId = (aggregateId != null);
+        final boolean hasAggId  = (aggregateId != null);
         final boolean hasEvtKey = (eventKey != null && !eventKey.isBlank());
+        final String  idemKey   = buildIdemKey(tenantId, sagaId, aggregateType, aggregateId, eventType, hasEvtKey ? eventKey : null);
 
-/*        final String sql = """
-            INSERT INTO outbox
-              (tenant_id, saga_id, aggregate_type, aggregate_id, event_type, event_key,
-               payload, headers_json, attempts, lease_until)
-            VALUES
-              (:tenant_id::varchar, :saga_id::uuid, :aggregate_type::varchar, :aggregate_id::bigint,
-               :event_type::varchar, :event_key::varchar, :payload::text, :headers_json::text, 0, NULL)
-            RETURNING id, created_on, tenant_id, saga_id, aggregate_type, aggregate_id,
-                      event_type, event_key, payload, headers_json, attempts, lease_until,
-                      created_at, updated_at
-            """;
-
-        DatabaseClient.GenericExecuteSpec spec = db.sql(sql)
-                .bind("tenant_id", tenantId)
-                .bind("saga_id", sagaId)
-                .bind("aggregate_type", aggregateType);
-
-        // These may be null. Use bindNull to avoid InParameter.
-        spec = bindMaybe(spec, "aggregate_id", aggregateId, Long.class);
-        spec = bindMaybe(spec, "event_key",   eventKey,   String.class);
-
-        spec = spec.bind("event_type", eventType)
-                .bind("payload", payloadJson)
-                .bind("headers_json", headersJson);
-
-        return spec.map(OutboxStoreImpl::mapRow).one();*/
         final String sql = """
         INSERT INTO outbox
           (tenant_id, saga_id, aggregate_type, aggregate_id, event_type, event_key,
-           payload, headers_json, attempts, lease_until)
+           payload, headers_json, attempts, lease_until, idem_key)
         VALUES
           (:tenant_id, :saga_id, :aggregate_type,
            %s, :event_type, %s,
-           :payload, :headers_json, 0, NULL)
+           :payload, :headers_json, 0, NULL, :idem_key)
         RETURNING id, created_on, tenant_id, saga_id, aggregate_type, aggregate_id,
                   event_type, event_key, payload, headers_json, attempts, lease_until,
                   created_at, updated_at
@@ -98,11 +70,15 @@ public class OutboxStoreImpl implements OutboxStore {
                 .bind("aggregate_type", aggregateType)
                 .bind("event_type", eventType)
                 .bind("payload", payloadJson)
-                .bind("headers_json", headersJson);
+                .bind("headers_json", headersJson)
+                .bind("idem_key", idemKey);
 
-        // Only bind when present (never bindNull here)
-        if (hasAggId)  spec = spec.bind("aggregate_id", aggregateId);
-        if (hasEvtKey) spec = spec.bind("event_key", eventKey);
+        if (hasAggId)  {
+            spec = spec.bind("aggregate_id", aggregateId);
+        }
+        if (hasEvtKey) {
+            spec = spec.bind("event_key", eventKey);
+        }
 
         if (log.isDebugEnabled()) {
             log.debug("Outbox insert: tenant={} sagaId={} aggType={} aggId={} evtType={} evtKey={}",
@@ -112,9 +88,21 @@ public class OutboxStoreImpl implements OutboxStore {
         return spec.map(OutboxStoreImpl::mapRow).one();
     }
 
-    private static DatabaseClient.GenericExecuteSpec bindMaybe(
-            DatabaseClient.GenericExecuteSpec spec, String name, Object value, Class<?> type) {
-        return value == null ? spec.bindNull(name, type) : spec.bind(name, value);
+    /** Stable per-event idempotency key (scoped by created_on unique index). */
+    private static String buildIdemKey(
+            String tenantId, UUID sagaId, String aggregateType, Long aggregateId,
+            String eventType, String eventKeyOrNull
+    ) {
+        // Include all discriminators to avoid collisions across different events in the same saga.
+        String raw = String.join("|",
+                tenantId,
+                sagaId.toString(),
+                eventType,
+                aggregateType,
+                aggregateId == null ? "-" : aggregateId.toString(),
+                eventKeyOrNull == null ? "" : eventKeyOrNull.trim()
+        );
+        return UUID.nameUUIDFromBytes(raw.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     // ------------ CLAIM BATCH (lease) --------------
@@ -232,4 +220,10 @@ public class OutboxStoreImpl implements OutboxStore {
             throw new IllegalArgumentException("Failed to serialize outbox headers", e);
         }
     }
+
+    private static String idemKey(String tenant, UUID sagaId, String eventType, String eventKey) {
+        var raw = (tenant + "|" + sagaId + "|" + eventType + "|" + (eventKey == null ? "" : eventKey));
+        return UUID.nameUUIDFromBytes(raw.getBytes(StandardCharsets.UTF_8)).toString(); // stable, short
+    }
+
 }

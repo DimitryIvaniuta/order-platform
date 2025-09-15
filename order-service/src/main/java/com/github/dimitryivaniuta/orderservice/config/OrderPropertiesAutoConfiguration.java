@@ -1,6 +1,5 @@
 package com.github.dimitryivaniuta.orderservice.config;
 
-import com.github.dimitryivaniuta.common.outbox.OutboxPublisherProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
@@ -9,7 +8,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  */
 @AutoConfiguration
 @EnableConfigurationProperties({
-        OutboxPublisherProperties.class,
         JwtProps.class
 })
 public class OrderPropertiesAutoConfiguration {

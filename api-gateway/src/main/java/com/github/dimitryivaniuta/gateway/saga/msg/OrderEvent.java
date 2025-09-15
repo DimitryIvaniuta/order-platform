@@ -7,10 +7,10 @@ import java.util.UUID;
  *
  * <p>Events are immutable and must include at least:</p>
  * <ul>
- *   <li>{@link #sagaId()} — global correlation id (same as the command's {@code sagaId}).</li>
- *   <li>{@link #type()}   — event type code (e.g., {@code ORDER_CREATED}, {@code INVENTORY_RESERVED},
+ *   <li>{@link #sagaId()} - global correlation id (same as the command's {@code sagaId}).</li>
+ *   <li>{@link #type()}   - event type code (e.g., {@code ORDER_CREATED}, {@code INVENTORY_RESERVED},
  *       {@code PAYMENT_CAPTURED}, {@code ORDER_COMPLETED}, {@code ORDER_FAILED}).</li>
- *   <li>{@link #reason()} — optional human-readable reason for failures/compensations (nullable).</li>
+ *   <li>{@link #reason()} - optional human-readable reason for failures/compensations (nullable).</li>
  * </ul>
  *
  * <p>Note: the gateway can deserialize to a generic JSON tree and only read these fields,
