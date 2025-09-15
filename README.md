@@ -1,4 +1,4 @@
-# Order Platform — Reactive, Event‑Driven Microservices (Spring Boot 3.5, Java 21)
+# Order Platform - Reactive, Event‑Driven Microservices (Spring Boot 3.5, Java 21)
 
 This monorepo implements a production‑grade order processing platform built with **Spring WebFlux**, **R2DBC (PostgreSQL)**, **Kafka (Reactor‑Kafka)**, and **the Outbox + Saga** patterns. It demonstrates multi‑tenant JWT security, cart & discounts, shipping quotes, payments, and end‑to‑end orchestration.
 
@@ -218,21 +218,21 @@ outbox(id, created_on, tenant_id, saga_id, aggregate_type, aggregate_id,
 
 ### Gateway (proxied)
 
-* `POST /api/orders` — create order/cart
-* `POST /api/orders/cart/items` — add cart item
-* `PATCH /api/orders/cart/items/{itemId}` — update item (qty/attrs)
-* `POST /api/orders/cart/discount` — apply discount code
-* `POST /api/orders/cart/shipping` — choose shipping option (triggers quote)
-* `POST /api/orders/cart/submit` — submit order
-* `GET  /api/orders/{id}` — fetch order with items
-* `GET  /api/saga/{sagaId}/status` — SSE/poll saga status
+* `POST /api/orders` - create order/cart
+* `POST /api/orders/cart/items` - add cart item
+* `PATCH /api/orders/cart/items/{itemId}` - update item (qty/attrs)
+* `POST /api/orders/cart/discount` - apply discount code
+* `POST /api/orders/cart/shipping` - choose shipping option (triggers quote)
+* `POST /api/orders/cart/submit` - submit order
+* `GET  /api/orders/{id}` - fetch order with items
+* `GET  /api/saga/{sagaId}/status` - SSE/poll saga status
 
 ### Payment
 
-* `POST /payments/authorize` — start auth
-* `POST /payments/{id}/capture` — capture part/remaining
-* `POST /payments/{id}/refund` — refund
-* `GET  /payments/{id}` — view
+* `POST /payments/authorize` - start auth
+* `POST /payments/{id}/capture` - capture part/remaining
+* `POST /payments/{id}/refund` - refund
+* `GET  /payments/{id}` - view
 
 **Payloads** are JSON; Money amounts are either **BigDecimal** (HTTP contracts) or **minor units** internally (DB/events).
 
